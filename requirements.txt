@@ -1,0 +1,13 @@
+# Core dependencies
+python-dotenv==1.0.1
+PyYAML==6.0.1
+rich==13.7.1
+click==8.1.7
+
+# AI / LLM Integration
+openai==1.52.0
+google-generativeai==0.8.3
+
+# Utilities
+colorama==0.4.6
+tabulate==0.9.0

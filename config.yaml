@@ -1,0 +1,65 @@
+# =============================================================
+# AgenticAI for BO — Configuration
+# =============================================================
+
+# SAP Business Objects Log Settings
+log_settings:
+  # Default log directory (can be overridden via CLI or .env)
+  # Linux path (typical SAP BO installation):
+  log_directory: "/opt/sap_bobj/enterprise_xi40/logging"
+  # Windows alternative:
+  # log_directory: "C:/Program Files (x86)/SAP BusinessObjects/SAP BusinessObjects Enterprise XI 4.0/logging"
+
+  # File extensions to scan for
+  log_extensions:
+    - ".log"
+    - ".glf"
+    - ".trc"
+    - ".txt"
+
+  # Maximum number of log files to process per run
+  max_files: 50
+
+  # Maximum lines per file to read (0 = unlimited)
+  max_lines_per_file: 0
+
+  # Encoding for reading log files
+  encoding: "utf-8"
+  fallback_encoding: "latin-1"
+
+# Error Detection Settings
+detection:
+  # Minimum severity to report: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  min_severity: "WARNING"
+
+  # Maximum number of errors to send to AI per batch
+  ai_batch_size: 10
+
+  # Include surrounding context lines for each error
+  context_lines_before: 3
+  context_lines_after: 3
+
+# AI Engine Settings
+ai_settings:
+  # Provider: "openai" or "gemini"
+  provider: "openai"
+
+  # Temperature for response generation (0.0 = deterministic, 1.0 = creative)
+  temperature: 0.3
+
+  # Maximum tokens for AI response
+  max_tokens: 2048
+
+# Report Settings
+report:
+  # Output format: "markdown", "json", "console"
+  output_format: "console"
+
+  # Output directory for file-based reports
+  output_directory: "./reports"
+
+  # Include raw log lines in the report
+  include_raw_logs: true
+
+  # Maximum solutions to show per error
+  max_solutions_per_error: 3

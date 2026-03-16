@@ -1,0 +1,164 @@
+# =============================================================
+# Known Error Patterns for SAP Business Objects Logs
+# =============================================================
+# Each pattern includes:
+#   - name: Human-readable name
+#   - regex: Regular expression to match the error
+#   - severity: CRITICAL, ERROR, WARNING, INFO
+#   - category: Grouping category
+#   - description: Brief description of the issue
+
+patterns:
+
+  # ─────────────────────────────────────────────────────────
+  # Database / CMS Errors
+  # ─────────────────────────────────────────────────────────
+  - name: "CMS Database Connection Failure"
+    regex: "(?i)(database|db).*(connection|connect).*(fail|error|timeout|refuse)"
+    severity: "CRITICAL"
+    category: "Database"
+    description: "CMS cannot connect to the system database."
+
+  - name: "SQL Exception"
+    regex: "(?i)sql(exception|error|state)|ORA-\\d{5}|SQLSTATE"
+    severity: "ERROR"
+    category: "Database"
+    description: "A SQL error occurred during database interaction."
+
+  - name: "Connection Pool Exhausted"
+    regex: "(?i)(connection\\s*pool).*(exhaust|full|no\\s*available|limit)"
+    severity: "CRITICAL"
+    category: "Database"
+    description: "The database connection pool has been exhausted."
+
+  # ─────────────────────────────────────────────────────────
+  # Authentication / Authorization Errors
+  # ─────────────────────────────────────────────────────────
+  - name: "Authentication Failure"
+    regex: "(?i)(authenticat|login|logon).*(fail|denied|error|invalid|reject)"
+    severity: "ERROR"
+    category: "Authentication"
+    description: "User authentication attempt failed."
+
+  - name: "License Limit Reached"
+    regex: "(?i)(license|licence).*(exceed|limit|maximum|expired|invalid)"
+    severity: "CRITICAL"
+    category: "Licensing"
+    description: "SAP BO license has reached its limit or has expired."
+
+  - name: "Access Denied"
+    regex: "(?i)(access|permission|authoriz).*(denied|forbidden|insufficient|not\\s*allowed)"
+    severity: "WARNING"
+    category: "Authorization"
+    description: "A user was denied access to a resource."
+
+  # ─────────────────────────────────────────────────────────
+  # Server / Service Errors
+  # ─────────────────────────────────────────────────────────
+  - name: "Server Crash / Unexpected Shutdown"
+    regex: "(?i)(server|service|process).*(crash|unexpected.*(shutdown|terminat)|fatal|abort)"
+    severity: "CRITICAL"
+    category: "Server"
+    description: "A server or service crashed or terminated unexpectedly."
+
+  - name: "Out of Memory"
+    regex: "(?i)(out\\s*of\\s*memory|java\\.lang\\.OutOfMemoryError|heap\\s*space|memory.*exhaust)"
+    severity: "CRITICAL"
+    category: "Memory"
+    description: "A process ran out of available memory."
+
+  - name: "Service Unavailable"
+    regex: "(?i)(service|server).*(unavailable|not\\s*running|not\\s*respond|down|unreachable)"
+    severity: "ERROR"
+    category: "Server"
+    description: "A required service is unavailable or not responding."
+
+  - name: "Port Already In Use"
+    regex: "(?i)(port|address).*(already\\s*in\\s*use|bind.*fail)"
+    severity: "ERROR"
+    category: "Server"
+    description: "The server port is already occupied by another process."
+
+  # ─────────────────────────────────────────────────────────
+  # Report Processing Errors
+  # ─────────────────────────────────────────────────────────
+  - name: "Report Processing Failure"
+    regex: "(?i)(report|document).*(process|schedul|refresh).*(fail|error|exception)"
+    severity: "ERROR"
+    category: "Reporting"
+    description: "A report failed to process, schedule, or refresh."
+
+  - name: "Crystal Reports Error"
+    regex: "(?i)(crystal|cr).*(error|exception|fail)|CrystalEnterprise\\..*Exception"
+    severity: "ERROR"
+    category: "Reporting"
+    description: "Crystal Reports encountered an error."
+
+  - name: "Web Intelligence Error"
+    regex: "(?i)(webi|web\\s*intelligence).*(error|exception|fail)"
+    severity: "ERROR"
+    category: "Reporting"
+    description: "Web Intelligence processing encountered an error."
+
+  - name: "Data Source Connection Error"
+    regex: "(?i)(data\\s*source|universe|connection).*(error|fail|timeout|invalid)"
+    severity: "ERROR"
+    category: "Data Source"
+    description: "Failed to connect to a data source or universe."
+
+  # ─────────────────────────────────────────────────────────
+  # File System Errors
+  # ─────────────────────────────────────────────────────────
+  - name: "Disk Space Low"
+    regex: "(?i)(disk|storage|space).*(low|full|insufficient|no\\s*space)"
+    severity: "CRITICAL"
+    category: "File System"
+    description: "Disk space is running low on the server."
+
+  - name: "File Not Found"
+    regex: "(?i)(file|path|directory).*(not\\s*found|does\\s*not\\s*exist|missing)"
+    severity: "WARNING"
+    category: "File System"
+    description: "A required file or directory was not found."
+
+  - name: "File Permission Error"
+    regex: "(?i)(file|write|read).*(permission|access).*(denied|error)"
+    severity: "ERROR"
+    category: "File System"
+    description: "Insufficient permissions to access a file."
+
+  # ─────────────────────────────────────────────────────────
+  # Network Errors
+  # ─────────────────────────────────────────────────────────
+  - name: "Network Timeout"
+    regex: "(?i)(network|socket|connection).*(timeout|timed\\s*out)"
+    severity: "ERROR"
+    category: "Network"
+    description: "A network connection timed out."
+
+  - name: "SSL / TLS Error"
+    regex: "(?i)(ssl|tls|certificate).*(error|fail|invalid|expired|handshake)"
+    severity: "ERROR"
+    category: "Network"
+    description: "SSL/TLS certificate or handshake error."
+
+  # ─────────────────────────────────────────────────────────
+  # Generic Patterns (Catch-all)
+  # ─────────────────────────────────────────────────────────
+  - name: "Java Exception"
+    regex: "(?i)(Exception|Error)\\s+at\\s+[a-zA-Z]|java\\.[a-z]+\\.[A-Z].*Exception"
+    severity: "ERROR"
+    category: "Application"
+    description: "A Java exception stack trace was detected."
+
+  - name: "Generic Error"
+    regex: "(?i)\\b(ERROR|FATAL|SEVERE)\\b"
+    severity: "ERROR"
+    category: "General"
+    description: "A general error-level log entry was detected."
+
+  - name: "Generic Warning"
+    regex: "(?i)\\bWARN(ING)?\\b"
+    severity: "WARNING"
+    category: "General"
+    description: "A warning-level log entry was detected."

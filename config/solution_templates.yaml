@@ -1,0 +1,117 @@
+# =============================================================
+# Pre-defined Solution Templates for Common SAP BO Errors
+# =============================================================
+# These solutions serve as a first-pass knowledge base.
+# The AI engine may supplement or refine these based on context.
+
+solutions:
+
+  Database:
+    - error: "CMS Database Connection Failure"
+      steps:
+        - "Verify the CMS database server is running and accessible from the BO server."
+        - "Check database credentials in CMC > Servers > Core Services."
+        - "Test network connectivity to the database host (ping / telnet on DB port)."
+        - "Review database server logs for any capacity or permission issues."
+        - "Restart the SIA (Server Intelligence Agent) if the issue persists."
+
+    - error: "SQL Exception"
+      steps:
+        - "Check the specific SQL error code (e.g., ORA-xxxxx) for targeted resolution."
+        - "Verify the database schema has not been altered or corrupted."
+        - "Ensure the database user has the required permissions."
+        - "Review recent database patches or upgrades that may have introduced issues."
+
+    - error: "Connection Pool Exhausted"
+      steps:
+        - "Increase the connection pool size in CMC > Servers > Properties."
+        - "Check for long-running or stuck report sessions consuming connections."
+        - "Review and optimize heavy scheduled reports."
+        - "Consider database server resource scaling."
+
+  Authentication:
+    - error: "Authentication Failure"
+      steps:
+        - "Verify user credentials are correct."
+        - "Check if the authentication provider (LDAP/AD/Enterprise) is reachable."
+        - "Review account lockout policies in Active Directory or LDAP."
+        - "Ensure the SAP BO authentication mode matches the user's expected login type."
+        - "Restart the CMS if the authentication service is unresponsive."
+
+  Licensing:
+    - error: "License Limit Reached"
+      steps:
+        - "Check current license usage via CMC > License Keys."
+        - "Verify license key expiration dates."
+        - "Contact SAP support for additional licenses or key renewal."
+        - "Review concurrent user sessions and close idle sessions."
+
+  Server:
+    - error: "Server Crash / Unexpected Shutdown"
+      steps:
+        - "Check Windows Event Viewer for related system-level errors."
+        - "Review the server's core dump / heap dump files if available."
+        - "Verify system resources (CPU, RAM, Disk) were not exhausted."
+        - "Check for recent BO patches or configuration changes."
+        - "Restart the SIA and monitor stability."
+
+    - error: "Out of Memory"
+      steps:
+        - "Increase the Java heap size (-Xmx) for the affected server in CMC."
+        - "Review and optimize report queries producing large datasets."
+        - "Check for memory leaks using JVM monitoring tools."
+        - "Reduce concurrent report processing limits."
+        - "Consider upgrading server RAM."
+
+    - error: "Service Unavailable"
+      steps:
+        - "Check if the service is running in CMC > Servers."
+        - "Restart the specific service or the SIA."
+        - "Verify no port conflicts exist for the service."
+        - "Review firewall rules that may block inter-service communication."
+
+  Reporting:
+    - error: "Report Processing Failure"
+      steps:
+        - "Open the report in Web Intelligence or Crystal Reports and check for errors."
+        - "Verify the data source / universe connection is valid."
+        - "Check if the report exceeds memory or row limits."
+        - "Clear the report cache and retry."
+        - "Review scheduled report parameters for correctness."
+
+    - error: "Data Source Connection Error"
+      steps:
+        - "Verify the data source connection details in CMC > Universes."
+        - "Test the database connection using a standalone DB client."
+        - "Check if the connection server is running."
+        - "Ensure ODBC/JDBC drivers are properly installed and configured."
+
+  "File System":
+    - error: "Disk Space Low"
+      steps:
+        - "Clear temporary files in the SAP BO temp directories."
+        - "Archive or delete old log files."
+        - "Move the FRS (File Repository Server) to a larger disk."
+        - "Set up disk space monitoring alerts."
+
+    - error: "File Not Found"
+      steps:
+        - "Verify the file path exists and is accessible."
+        - "Check if the FRS content is intact and not corrupted."
+        - "Restore the file from backup if it was accidentally deleted."
+        - "Review recent migrations or folder restructuring."
+
+  Network:
+    - error: "Network Timeout"
+      steps:
+        - "Check network connectivity between BO servers and dependent systems."
+        - "Increase timeout settings in the relevant server configuration."
+        - "Review firewall and proxy settings for blocked connections."
+        - "Check for network congestion or bandwidth issues."
+
+    - error: "SSL / TLS Error"
+      steps:
+        - "Verify SSL certificates are valid and not expired."
+        - "Ensure the correct certificate is imported into the BO keystore."
+        - "Check TLS version compatibility between client and server."
+        - "Renew or re-issue certificates through your Certificate Authority."
