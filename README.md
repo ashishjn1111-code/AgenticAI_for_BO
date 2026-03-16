@@ -354,3 +354,5 @@ For questions or support, reach out to the project maintainer:
 ---
 
 > _Built with ❤️ to simplify SAP Business Objects log troubleshooting._
+#   A g e n t i c A I _ f o r _ B O  
+ 
