@@ -1,195 +1,184 @@
 """
-error_detector.py — Error and Warning Pattern Detection
+error_detector.py — Error Detection with Pattern Matching
 
-Scans parsed log entries against known error patterns and
-classifies them by severity and category.
+Scans parsed log entries against known error patterns, classifies them
+by severity/category, and deduplicates identical issues.
 """
 
 import re
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List
 
 from src.utils import load_error_patterns, meets_severity_threshold
 
 
+# ── Data Model ─────────────────────────────────────────────
+
+
 @dataclass
 class DetectedError:
-    """Represents a detected error from the logs."""
-
-    entry: object  # LogEntry
+    """A single detected error from the logs."""
+    entry: object            # LogEntry
     pattern_name: str
     category: str
     severity: str
     description: str
     context_before: List[str] = field(default_factory=list)
     context_after: List[str] = field(default_factory=list)
-    matched_pattern: str = ""
+    duplicate_count: int = 1
 
     def __repr__(self):
-        return (
-            f"DetectedError(severity={self.severity}, "
-            f"pattern='{self.pattern_name}', "
-            f"file='{self.entry.file_name}', "
-            f"line={self.entry.line_number})"
-        )
+        return (f"DetectedError({self.severity}, {self.pattern_name!r}, "
+                f"file={self.entry.file_name!r}, line={self.entry.line_number})")
 
     def get_context_block(self):
-        """Return the error with its surrounding context as a text block."""
-        lines = []
-        for ctx_line in self.context_before:
-            lines.append(f"  {ctx_line.rstrip()}")
+        """Return error with surrounding context as a text block."""
+        lines = [f"  {l.rstrip()}" for l in self.context_before]
         lines.append(f"▶ {self.entry.raw_line.rstrip()}")
-        for ctx_line in self.context_after:
-            lines.append(f"  {ctx_line.rstrip()}")
+        lines.extend(f"  {l.rstrip()}" for l in self.context_after)
         return "\n".join(lines)
+
+
+# ── Deduplication helpers ──────────────────────────────────
+
+_RE_TIMESTAMP = re.compile(r'\d{4}[-/]\d{2}[-/]\d{2}[\sT]\d{2}:\d{2}:\d{2}[.\d]*')
+_RE_IP = re.compile(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}')
+_RE_PORT = re.compile(r':\d{2,5}')
+_RE_THREAD = re.compile(r'\[?thread[-\s]?\d+\]?', re.IGNORECASE)
+_RE_HTTP_EXEC = re.compile(r'\[?http-\S+-exec-\d+\]?', re.IGNORECASE)
+_RE_BIGNUM = re.compile(r'\b\d{4,}\b')
+_RE_SPACES = re.compile(r'\s+')
+
+
+def _make_dedup_key(pattern_name, message):
+    """
+    Build a dedup key by normalizing variable parts of the message
+    (timestamps, IPs, ports, thread IDs, large numbers).
+    """
+    s = message.strip().lower()
+    s = _RE_TIMESTAMP.sub("", s)
+    s = _RE_IP.sub("<IP>", s)
+    s = _RE_PORT.sub(":<PORT>", s)
+    s = _RE_THREAD.sub("", s)
+    s = _RE_HTTP_EXEC.sub("", s)
+    s = _RE_BIGNUM.sub("<N>", s)
+    s = _RE_SPACES.sub(" ", s).strip()
+    return f"{pattern_name}||{s}"
+
+
+# ── Detector ───────────────────────────────────────────────
 
 
 class ErrorDetector:
     """
-    Detects errors in parsed log entries using pattern matching.
+    Detects errors in parsed log entries using regex pattern matching.
 
-    Usage:
-        detector = ErrorDetector(config)
-        errors = detector.detect(entries, log_file)
+    Features:
+      - Configurable severity threshold
+      - Context extraction (N lines before/after)
+      - Deduplication of repeated errors
     """
 
     def __init__(self, config):
-        """
-        Initialize the ErrorDetector.
+        det = config.get("detection", {})
+        self.min_severity = det.get("min_severity", "WARNING")
+        self.ctx_before = det.get("context_lines_before", 3)
+        self.ctx_after = det.get("context_lines_after", 3)
+        self.deduplicate = det.get("deduplicate", True)
 
-        Args:
-            config (dict): Parsed configuration dictionary.
-        """
-        detection_config = config.get("detection", {})
-        self.min_severity = detection_config.get("min_severity", "WARNING")
-        self.context_lines_before = detection_config.get("context_lines_before", 3)
-        self.context_lines_after = detection_config.get("context_lines_after", 3)
+        # Compile patterns once
+        self._patterns = self._compile(load_error_patterns())
 
-        # Load and compile error patterns
-        raw_patterns = load_error_patterns()
-        self.patterns = self._compile_patterns(raw_patterns)
-
-    def _compile_patterns(self, raw_patterns):
-        """Compile regex patterns for faster matching."""
-        compiled = []
-        for pattern in raw_patterns:
-            try:
-                compiled.append(
-                    {
-                        "name": pattern["name"],
-                        "regex": re.compile(pattern["regex"]),
-                        "severity": pattern.get("severity", "ERROR"),
-                        "category": pattern.get("category", "General"),
-                        "description": pattern.get("description", ""),
-                    }
-                )
-            except re.error as e:
-                print(f"[WARNING] Invalid regex for pattern '{pattern['name']}': {e}")
-
-        return compiled
+    # ── Public API ─────────────────────────────────────────
 
     def detect(self, entries, log_file=None):
-        """
-        Scan log entries for errors matching known patterns.
-
-        Args:
-            entries (list[LogEntry]): Parsed log entries.
-            log_file (LogFile, optional): Source log file (for context extraction).
-
-        Returns:
-            list[DetectedError]: List of detected errors.
-        """
-        detected_errors = []
+        """Scan entries for known error patterns. Returns list of DetectedError."""
+        results = []
+        seen = {}               # dedup_key → index in results
         raw_lines = log_file.lines if log_file else []
 
         for entry in entries:
             if not entry.message and not entry.raw_line:
                 continue
+            self._match_entry(entry, raw_lines, results, seen)
 
-            # Check against all patterns
-            for pattern in self.patterns:
-                text_to_check = entry.raw_line
+        # Print dedup summary
+        if self.deduplicate and results:
+            total = sum(e.duplicate_count for e in results)
+            dupes = total - len(results)
+            if dupes > 0:
+                print(f"  🔁 {total} occurrences → {len(results)} unique ({dupes} duplicates merged).")
 
-                match = pattern["regex"].search(text_to_check)
-                if match:
-                    # Check severity threshold
-                    if not meets_severity_threshold(
-                        pattern["severity"], self.min_severity
-                    ):
-                        continue
+        return results
 
-                    # Extract context lines
-                    ctx_before, ctx_after = self._extract_context(
-                        raw_lines, entry.line_number
-                    )
+    def get_summary(self, errors):
+        """Return summary dict with counts by severity, category, and file."""
+        summary = {"total_errors": len(errors),
+                   "by_severity": {}, "by_category": {}, "by_file": {}}
+        for e in errors:
+            summary["by_severity"][e.severity] = summary["by_severity"].get(e.severity, 0) + 1
+            summary["by_category"][e.category] = summary["by_category"].get(e.category, 0) + 1
+            fname = e.entry.file_name
+            summary["by_file"][fname] = summary["by_file"].get(fname, 0) + 1
+        return summary
 
-                    error = DetectedError(
-                        entry=entry,
-                        pattern_name=pattern["name"],
-                        category=pattern["category"],
-                        severity=pattern["severity"],
-                        description=pattern["description"],
-                        context_before=ctx_before,
-                        context_after=ctx_after,
-                        matched_pattern=pattern["name"],
-                    )
-                    detected_errors.append(error)
-                    break  # One match per entry (use first matching pattern)
+    # ── Internals ──────────────────────────────────────────
 
-        return detected_errors
+    @staticmethod
+    def _compile(raw_patterns):
+        """Compile regex patterns from YAML config."""
+        compiled = []
+        for p in raw_patterns:
+            try:
+                compiled.append({
+                    "name": p["name"],
+                    "regex": re.compile(p["regex"]),
+                    "severity": p.get("severity", "ERROR"),
+                    "category": p.get("category", "General"),
+                    "description": p.get("description", ""),
+                })
+            except re.error as exc:
+                print(f"[WARNING] Bad regex in '{p['name']}': {exc}")
+        return compiled
 
-    def _extract_context(self, raw_lines, line_number):
-        """
-        Extract context lines around a specific line number.
+    def _match_entry(self, entry, raw_lines, results, seen):
+        """Try each pattern against one log entry."""
+        for pat in self._patterns:
+            if not pat["regex"].search(entry.raw_line):
+                continue
+            if not meets_severity_threshold(pat["severity"], self.min_severity):
+                continue
 
-        Args:
-            raw_lines (list[str]): All lines from the log file.
-            line_number (int): 1-indexed line number of the errored line.
+            # Dedup check
+            if self.deduplicate:
+                key = _make_dedup_key(pat["name"], entry.message)
+                if key in seen:
+                    results[seen[key]].duplicate_count += 1
+                    return  # skip duplicate
 
-        Returns:
-            tuple: (context_before, context_after) lists of strings.
-        """
+            # Build DetectedError
+            ctx_b, ctx_a = self._context(raw_lines, entry.line_number)
+            error = DetectedError(
+                entry=entry,
+                pattern_name=pat["name"],
+                category=pat["category"],
+                severity=pat["severity"],
+                description=pat["description"],
+                context_before=ctx_b,
+                context_after=ctx_a,
+            )
+
+            if self.deduplicate:
+                seen[key] = len(results)
+
+            results.append(error)
+            return  # first match wins
+
+    def _context(self, raw_lines, line_number):
+        """Extract context lines around a 1-indexed line number."""
         if not raw_lines:
             return [], []
-
-        idx = line_number - 1  # Convert to 0-indexed
-
-        start = max(0, idx - self.context_lines_before)
-        end = min(len(raw_lines), idx + self.context_lines_after + 1)
-
-        context_before = raw_lines[start:idx]
-        context_after = raw_lines[idx + 1 : end]
-
-        return context_before, context_after
-
-    def get_summary(self, detected_errors):
-        """
-        Generate a summary of detected errors.
-
-        Args:
-            detected_errors (list[DetectedError]): List of detected errors.
-
-        Returns:
-            dict: Summary statistics.
-        """
-        summary = {
-            "total_errors": len(detected_errors),
-            "by_severity": {},
-            "by_category": {},
-            "by_file": {},
-        }
-
-        for error in detected_errors:
-            # Count by severity
-            sev = error.severity
-            summary["by_severity"][sev] = summary["by_severity"].get(sev, 0) + 1
-
-            # Count by category
-            cat = error.category
-            summary["by_category"][cat] = summary["by_category"].get(cat, 0) + 1
-
-            # Count by file
-            fname = error.entry.file_name
-            summary["by_file"][fname] = summary["by_file"].get(fname, 0) + 1
-
-        return summary
+        idx = line_number - 1
+        start = max(0, idx - self.ctx_before)
+        end = min(len(raw_lines), idx + self.ctx_after + 1)
+        return raw_lines[start:idx], raw_lines[idx + 1:end]

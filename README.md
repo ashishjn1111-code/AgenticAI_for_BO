@@ -266,7 +266,9 @@ sudo systemctl start agenticai-bo
 
 ## 📁 Supported Log Types
 
-The tool is designed to process common SAP Business Objects log files, including but not limited to:
+The tool processes log files from both **SAP Business Objects** and **Apache Tomcat**:
+
+### SAP Business Objects Logs
 
 | Log File                  | Description                                      |
 | ------------------------- | ------------------------------------------------ |
@@ -278,6 +280,17 @@ The tool is designed to process common SAP Business Objects log files, including
 | `crystal_reports.log`     | Crystal Reports processing logs                  |
 | `ConnectionServer*.log`   | Connection Server logs (database connectivity)   |
 | `TraceLog_*.glf`          | General trace/debug log files                    |
+
+### Apache Tomcat Logs
+
+| Log File                          | Description                                          |
+| --------------------------------- | ---------------------------------------------------- |
+| `catalina.out`                    | Main Tomcat console output (stdout/stderr)           |
+| `catalina.YYYY-MM-DD.log`        | Daily Tomcat engine logs                             |
+| `localhost.YYYY-MM-DD.log`       | Web application context / deployment logs            |
+| `localhost_access_log.YYYY-MM-DD.txt` | HTTP access logs (requests, status codes, IPs)  |
+| `host-manager.YYYY-MM-DD.log`    | Host Manager application logs                        |
+| `manager.YYYY-MM-DD.log`         | Tomcat Manager application logs                      |
 
 ---
 

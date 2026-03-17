@@ -1,357 +1,291 @@
 """
-ai_engine.py — AI Integration for Solution Generation
+ai_engine.py — Solution Generation Engine
 
-Sends detected errors to an AI/LLM provider (OpenAI or Google Gemini)
-and generates proposed solutions. Falls back to pre-defined solution
-templates if AI is unavailable.
+Generates solutions for detected errors using either:
+  1. AI providers (OpenAI / Google Gemini)  — when enabled
+  2. Pre-defined solution templates          — always available as fallback
+
+Set ai_settings.enabled=false or use --no-ai to skip AI entirely.
 """
 
 import os
-from typing import List, Optional
-
 from src.utils import load_solution_templates, truncate_text
 
 
-# ─────────────────────────────────────────────────────────
-# System Prompt for AI
-# ─────────────────────────────────────────────────────────
+# ── System prompt for AI providers ─────────────────────────
 
-SYSTEM_PROMPT = """You are an expert SAP Business Objects (BO) administrator and troubleshooter.
-You are given error entries extracted from SAP Business Objects log files.
+_SYSTEM_PROMPT = """\
+You are an expert SAP Business Objects and Apache Tomcat administrator.
 
-For each error, you must:
-1. Identify the root cause based on the error message, severity, and context.
-2. Propose clear, actionable solution steps to resolve the issue.
-3. Note any related SAP KB articles or common fixes if applicable.
-4. Indicate the urgency level (Immediate, Soon, Can Wait).
+For each error, provide:
+1. Root Cause — what likely caused this
+2. Urgency    — Immediate / Soon / Can Wait
+3. Solution Steps — clear, actionable steps
+4. Notes — relevant SAP KB articles or best practices
 
-Format your response as follows for EACH error:
-
-**Error**: [Brief error title]
-**Root Cause**: [Explanation of what likely caused this]
-**Urgency**: [Immediate / Soon / Can Wait]
+Format each error as:
+**Error**: [title]
+**Root Cause**: [explanation]
+**Urgency**: [level]
 **Solution Steps**:
-1. [Step 1]
-2. [Step 2]
-3. [Step 3]
-**Additional Notes**: [Any relevant SAP KB articles, best practices, or warnings]
+1. [step]
+2. [step]
+**Additional Notes**: [notes]
+"""
 
-Be concise but thorough. Focus on practical, actionable advice."""
+_URGENCY_MAP = {
+    "CRITICAL": "Immediate",
+    "ERROR": "Soon",
+    "WARNING": "Can Wait",
+    "INFO": "Can Wait",
+}
+
+
+# ── Data Model ─────────────────────────────────────────────
 
 
 class AISolution:
-    """Represents an AI-generated solution for a detected error."""
+    """A proposed solution for a detected error."""
 
-    def __init__(self, error_name, root_cause, urgency, steps, notes="", source="ai"):
+    __slots__ = ("error_name", "root_cause", "urgency", "steps", "notes", "source")
+
+    def __init__(self, error_name, root_cause, urgency, steps, notes="", source="template"):
         self.error_name = error_name
         self.root_cause = root_cause
         self.urgency = urgency
         self.steps = steps
         self.notes = notes
-        self.source = source  # "ai" or "template"
+        self.source = source
 
     def __repr__(self):
-        return f"AISolution(error='{self.error_name}', urgency='{self.urgency}', source='{self.source}')"
+        return f"AISolution({self.error_name!r}, urgency={self.urgency!r}, source={self.source!r})"
+
+
+# ── Engine ─────────────────────────────────────────────────
 
 
 class AIEngine:
     """
-    AI-powered solution generation engine.
+    Solution generation engine.
 
-    Supports OpenAI and Google Gemini. Falls back to template-based
-    solutions when AI is unavailable.
-
-    Usage:
-        engine = AIEngine(config)
-        solutions = engine.generate_solutions(detected_errors)
+    When AI is disabled (default), uses pre-defined templates from
+    config/solution_templates.yaml. When enabled, calls OpenAI or
+    Gemini and falls back to templates on failure.
     """
 
     def __init__(self, config):
-        """
-        Initialize the AI Engine.
+        ai_cfg = config.get("ai_settings", {})
+        self.ai_enabled = ai_cfg.get("enabled", False)
+        self.provider = os.environ.get("AI_PROVIDER", ai_cfg.get("provider", "openai"))
+        self.temperature = ai_cfg.get("temperature", 0.3)
+        self.max_tokens = ai_cfg.get("max_tokens", 2048)
+        self.batch_size = config.get("detection", {}).get("ai_batch_size", 10)
 
-        Args:
-            config (dict): Parsed configuration dictionary.
-        """
-        ai_config = config.get("ai_settings", {})
-        self.provider = os.environ.get("AI_PROVIDER", ai_config.get("provider", "openai"))
-        self.temperature = ai_config.get("temperature", 0.3)
-        self.max_tokens = ai_config.get("max_tokens", 2048)
+        # Always load templates
+        self._templates = load_solution_templates()
 
-        detection_config = config.get("detection", {})
-        self.batch_size = detection_config.get("ai_batch_size", 10)
+        # Optionally init AI client
+        self._client = None
+        self._model = None
+        if self.ai_enabled:
+            self._init_client()
+        else:
+            print("[INFO] AI disabled — using template-based solutions.")
 
-        # Load solution templates as fallback
-        self.solution_templates = load_solution_templates()
+    # ── Public API ─────────────────────────────────────────
 
-        # Initialize AI client
-        self.client = None
-        self._init_client()
+    def generate_solutions(self, detected_errors):
+        """Return dict mapping error_index → AISolution."""
+        solutions = {}
+
+        # Try AI first (if available)
+        if self._client:
+            for i in range(0, len(detected_errors), self.batch_size):
+                batch = detected_errors[i:i + self.batch_size]
+                for j, sol in enumerate(self._ai_batch(batch)):
+                    solutions[i + j] = sol
+
+        # Fill gaps with templates
+        for i, err in enumerate(detected_errors):
+            if i not in solutions:
+                solutions[i] = self._template_solution(err)
+
+        return solutions
+
+    # ── AI Client Init ─────────────────────────────────────
 
     def _init_client(self):
-        """Initialize the AI client based on the configured provider."""
         if self.provider == "openai":
             self._init_openai()
         elif self.provider == "gemini":
             self._init_gemini()
         else:
-            print(f"[WARNING] Unknown AI provider '{self.provider}'. Using template-based solutions only.")
+            print(f"[WARNING] Unknown AI provider '{self.provider}'.")
 
     def _init_openai(self):
-        """Initialize OpenAI client."""
-        api_key = os.environ.get("OPENAI_API_KEY", "")
-        if not api_key or api_key.startswith("your-"):
-            print("[INFO] OpenAI API key not configured. Using template-based solutions.")
+        key = os.environ.get("OPENAI_API_KEY", "")
+        if not key or key.startswith("your-"):
+            print("[INFO] OpenAI key not configured. Templates only.")
             return
-
         try:
             from openai import OpenAI
-            self.client = OpenAI(api_key=api_key)
-            self.model = os.environ.get("OPENAI_MODEL", "gpt-4")
-            print(f"[INFO] OpenAI client initialized (model: {self.model}).")
+            self._client = OpenAI(api_key=key)
+            self._model = os.environ.get("OPENAI_MODEL", "gpt-4")
+            print(f"[INFO] OpenAI ready (model: {self._model}).")
         except ImportError:
-            print("[WARNING] openai package not installed. Run: pip install openai")
-        except Exception as e:
-            print(f"[WARNING] Failed to initialize OpenAI client: {e}")
+            print("[WARNING] openai not installed. pip install openai")
+        except Exception as exc:
+            print(f"[WARNING] OpenAI init failed: {exc}")
 
     def _init_gemini(self):
-        """Initialize Google Gemini client."""
-        api_key = os.environ.get("GEMINI_API_KEY", "")
-        if not api_key or api_key.startswith("your-"):
-            print("[INFO] Gemini API key not configured. Using template-based solutions.")
+        key = os.environ.get("GEMINI_API_KEY", "")
+        if not key or key.startswith("your-"):
+            print("[INFO] Gemini key not configured. Templates only.")
             return
-
         try:
             import google.generativeai as genai
-            genai.configure(api_key=api_key)
-            self.model = os.environ.get("GEMINI_MODEL", "gemini-pro")
-            self.client = genai.GenerativeModel(self.model)
-            print(f"[INFO] Gemini client initialized (model: {self.model}).")
+            genai.configure(api_key=key)
+            self._model = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+            self._client = genai.GenerativeModel(self._model)
+            print(f"[INFO] Gemini ready (model: {self._model}).")
         except ImportError:
-            print("[WARNING] google-generativeai package not installed. Run: pip install google-generativeai")
-        except Exception as e:
-            print(f"[WARNING] Failed to initialize Gemini client: {e}")
+            print("[WARNING] google-generativeai not installed.")
+        except Exception as exc:
+            print(f"[WARNING] Gemini init failed: {exc}")
 
-    def generate_solutions(self, detected_errors):
-        """
-        Generate solutions for a list of detected errors.
+    # ── AI Calls ───────────────────────────────────────────
 
-        First attempts AI-based solutions, then falls back to templates.
-
-        Args:
-            detected_errors (list[DetectedError]): Detected errors to solve.
-
-        Returns:
-            dict: Mapping of error index → AISolution.
-        """
-        solutions = {}
-
-        if self.client:
-            # Process in batches for AI
-            for i in range(0, len(detected_errors), self.batch_size):
-                batch = detected_errors[i: i + self.batch_size]
-                batch_solutions = self._generate_ai_solutions(batch)
-
-                for j, solution in enumerate(batch_solutions):
-                    solutions[i + j] = solution
-        else:
-            print("[INFO] AI client not available. Using template-based solutions.\n")
-
-        # Fill in any missing solutions with templates
-        for i, error in enumerate(detected_errors):
-            if i not in solutions:
-                template_solution = self._get_template_solution(error)
-                solutions[i] = template_solution
-
-        return solutions
-
-    def _generate_ai_solutions(self, errors):
-        """
-        Generate AI-based solutions for a batch of errors.
-
-        Args:
-            errors (list[DetectedError]): Batch of errors.
-
-        Returns:
-            list[AISolution]: AI-generated solutions.
-        """
-        # Build the prompt with error details
-        error_descriptions = []
-        for i, error in enumerate(errors, start=1):
-            desc = (
-                f"Error #{i}:\n"
-                f"  File: {error.entry.file_name}\n"
-                f"  Line: {error.entry.line_number}\n"
-                f"  Severity: {error.severity}\n"
-                f"  Category: {error.category}\n"
-                f"  Pattern: {error.pattern_name}\n"
-                f"  Message: {error.entry.message}\n"
-                f"  Raw Log Line: {truncate_text(error.entry.raw_line, 300)}\n"
-                f"  Context:\n{error.get_context_block()}\n"
-            )
-            error_descriptions.append(desc)
-
-        user_prompt = (
-            "Analyze the following errors from SAP Business Objects logs and "
-            "provide solutions for each:\n\n"
-            + "\n---\n".join(error_descriptions)
-        )
-
+    def _ai_batch(self, errors):
+        """Send a batch to the AI provider, return list of AISolution."""
+        prompt = self._build_prompt(errors)
         try:
             if self.provider == "openai":
-                return self._call_openai(user_prompt, len(errors))
+                text = self._call_openai(prompt)
             elif self.provider == "gemini":
-                return self._call_gemini(user_prompt, len(errors))
-        except Exception as e:
-            print(f"[ERROR] AI request failed: {e}")
-            print("[INFO] Falling back to template-based solutions for this batch.")
+                text = self._call_gemini(prompt)
+            else:
+                return []
+            return self._parse_response(text)
+        except Exception as exc:
+            print(f"[ERROR] AI request failed: {exc}")
+            print("[INFO] Falling back to templates for this batch.")
+            return []
 
-        # Return empty list so template fallback kicks in
-        return []
+    def _build_prompt(self, errors):
+        parts = []
+        for i, err in enumerate(errors, 1):
+            parts.append(
+                f"Error #{i}:\n"
+                f"  File: {err.entry.file_name}\n"
+                f"  Line: {err.entry.line_number}\n"
+                f"  Severity: {err.severity}\n"
+                f"  Category: {err.category}\n"
+                f"  Pattern: {err.pattern_name}\n"
+                f"  Message: {err.entry.message}\n"
+                f"  Raw: {truncate_text(err.entry.raw_line, 300)}\n"
+            )
+        return ("Analyze these SAP BO / Tomcat log errors and provide solutions:\n\n"
+                + "\n---\n".join(parts))
 
-    def _call_openai(self, user_prompt, expected_count):
-        """Call OpenAI API and parse the response."""
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
+    def _call_openai(self, prompt):
+        resp = self._client.chat.completions.create(
+            model=self._model,
+            messages=[{"role": "system", "content": _SYSTEM_PROMPT},
+                      {"role": "user", "content": prompt}],
             temperature=self.temperature,
             max_tokens=self.max_tokens,
         )
+        return resp.choices[0].message.content
 
-        response_text = response.choices[0].message.content
-        return self._parse_ai_response(response_text, expected_count)
+    def _call_gemini(self, prompt):
+        resp = self._client.generate_content(f"{_SYSTEM_PROMPT}\n\n{prompt}")
+        return resp.text
 
-    def _call_gemini(self, user_prompt, expected_count):
-        """Call Gemini API and parse the response."""
-        full_prompt = f"{SYSTEM_PROMPT}\n\n{user_prompt}"
-        response = self.client.generate_content(full_prompt)
-        response_text = response.text
-        return self._parse_ai_response(response_text, expected_count)
+    # ── Response Parsing ───────────────────────────────────
 
-    def _parse_ai_response(self, response_text, expected_count):
-        """
-        Parse the AI response text into AISolution objects.
-
-        This is a best-effort parser that tries to extract structured
-        information from the AI's freeform response.
-        """
-        solutions = []
-
-        # Split response by error sections
-        sections = response_text.split("**Error**:")
+    def _parse_response(self, text):
+        """Best-effort parse of AI freeform response into AISolution list."""
+        sections = text.split("**Error**:")
         if len(sections) <= 1:
-            sections = response_text.split("Error #")
+            sections = text.split("Error #")
 
-        for section in sections[1:]:  # Skip the first empty split
-            solution = self._parse_solution_section(section)
-            solutions.append(solution)
+        solutions = []
+        for section in sections[1:]:
+            solutions.append(self._parse_section(section))
 
-        # If parsing didn't yield expected count, create a single combined solution
-        if len(solutions) == 0:
-            solutions.append(
-                AISolution(
-                    error_name="Combined Analysis",
-                    root_cause=response_text[:500],
-                    urgency="Review",
-                    steps=[response_text],
-                    notes="AI response was returned as a combined analysis.",
-                    source="ai",
-                )
-            )
-
+        if not solutions:
+            solutions.append(AISolution(
+                error_name="Combined Analysis",
+                root_cause=text[:500],
+                urgency="Review",
+                steps=[text],
+                notes="AI returned a combined analysis.",
+                source="ai",
+            ))
         return solutions
 
-    def _parse_solution_section(self, section):
-        """Parse a single solution section from the AI response."""
+    @staticmethod
+    def _parse_section(section):
         lines = section.strip().split("\n")
-
-        error_name = lines[0].strip().strip("*").strip() if lines else "Unknown Error"
-        root_cause = ""
-        urgency = "Review"
+        name = lines[0].strip().strip("*").strip() if lines else "Unknown"
+        root_cause, urgency, notes = "", "Review", ""
         steps = []
-        notes = ""
+        field = None
 
-        current_field = None
         for line in lines[1:]:
-            line_stripped = line.strip()
-
-            if line_stripped.startswith("**Root Cause**"):
-                current_field = "root_cause"
-                root_cause = line_stripped.split(":", 1)[-1].strip().strip("*")
-            elif line_stripped.startswith("**Urgency**"):
-                current_field = "urgency"
-                urgency = line_stripped.split(":", 1)[-1].strip().strip("*")
-            elif line_stripped.startswith("**Solution Steps**"):
-                current_field = "steps"
-            elif line_stripped.startswith("**Additional Notes**"):
-                current_field = "notes"
-                notes = line_stripped.split(":", 1)[-1].strip().strip("*")
-            elif current_field == "steps" and line_stripped:
-                # Remove leading numbers/bullets
-                step = line_stripped.lstrip("0123456789.-) ").strip()
+            s = line.strip()
+            if s.startswith("**Root Cause**"):
+                field = "root"
+                root_cause = s.split(":", 1)[-1].strip().strip("*")
+            elif s.startswith("**Urgency**"):
+                field = "urg"
+                urgency = s.split(":", 1)[-1].strip().strip("*")
+            elif s.startswith("**Solution Steps**"):
+                field = "steps"
+            elif s.startswith("**Additional Notes**"):
+                field = "notes"
+                notes = s.split(":", 1)[-1].strip().strip("*")
+            elif field == "steps" and s:
+                step = s.lstrip("0123456789.-) ").strip()
                 if step:
                     steps.append(step)
-            elif current_field == "root_cause" and line_stripped:
-                root_cause += " " + line_stripped
-            elif current_field == "notes" and line_stripped:
-                notes += " " + line_stripped
+            elif field == "root" and s:
+                root_cause += " " + s
+            elif field == "notes" and s:
+                notes += " " + s
 
         return AISolution(
-            error_name=error_name,
-            root_cause=root_cause or "See AI analysis above.",
+            error_name=name,
+            root_cause=root_cause or "See AI analysis.",
             urgency=urgency,
-            steps=steps or ["Review the error context and consult SAP documentation."],
-            notes=notes,
-            source="ai",
+            steps=steps or ["Review error context and consult SAP documentation."],
+            notes=notes, source="ai",
         )
 
-    def _get_template_solution(self, error):
-        """
-        Look up a pre-defined template solution for an error.
+    # ── Template Fallback ──────────────────────────────────
 
-        Args:
-            error (DetectedError): The detected error.
-
-        Returns:
-            AISolution: Template-based solution.
-        """
-        category_solutions = self.solution_templates.get(error.category, [])
-
-        for template in category_solutions:
-            if template.get("error", "").lower() == error.pattern_name.lower():
+    def _template_solution(self, error):
+        """Look up a pre-defined template solution by category + pattern name."""
+        for tmpl in self._templates.get(error.category, []):
+            if tmpl.get("error", "").lower() == error.pattern_name.lower():
                 return AISolution(
                     error_name=error.pattern_name,
                     root_cause=error.description,
-                    urgency=self._severity_to_urgency(error.severity),
-                    steps=template.get("steps", ["Consult SAP documentation."]),
+                    urgency=_URGENCY_MAP.get(error.severity, "Review"),
+                    steps=tmpl.get("steps", ["Consult SAP documentation."]),
                     notes="Solution from pre-defined knowledge base.",
-                    source="template",
                 )
 
         # Generic fallback
         return AISolution(
             error_name=error.pattern_name,
             root_cause=error.description,
-            urgency=self._severity_to_urgency(error.severity),
+            urgency=_URGENCY_MAP.get(error.severity, "Review"),
             steps=[
-                f"Review the error in file '{error.entry.file_name}' at line {error.entry.line_number}.",
-                "Check the SAP BO CMC for related server alerts.",
+                f"Review error in '{error.entry.file_name}' at line {error.entry.line_number}.",
+                "Check SAP BO CMC for related server alerts.",
                 "Search SAP Knowledge Base for the error pattern.",
                 "Restart the affected service if the issue persists.",
             ],
-            notes="Generic solution — no specific template found for this error.",
-            source="template",
+            notes="No specific template found — generic guidance.",
         )
-
-    def _severity_to_urgency(self, severity):
-        """Map severity to urgency."""
-        mapping = {
-            "CRITICAL": "Immediate",
-            "ERROR": "Soon",
-            "WARNING": "Can Wait",
-            "INFO": "Can Wait",
-        }
-        return mapping.get(severity, "Review")

@@ -1,117 +1,888 @@
-# =============================================================
-# Pre-defined Solution Templates for Common SAP BO Errors
-# =============================================================
-# These solutions serve as a first-pass knowledge base.
-# The AI engine may supplement or refine these based on context.
-
 solutions:
-
   Database:
-    - error: "CMS Database Connection Failure"
-      steps:
-        - "Verify the CMS database server is running and accessible from the BO server."
-        - "Check database credentials in CMC > Servers > Core Services."
-        - "Test network connectivity to the database host (ping / telnet on DB port)."
-        - "Review database server logs for any capacity or permission issues."
-        - "Restart the SIA (Server Intelligence Agent) if the issue persists."
-
-    - error: "SQL Exception"
-      steps:
-        - "Check the specific SQL error code (e.g., ORA-xxxxx) for targeted resolution."
-        - "Verify the database schema has not been altered or corrupted."
-        - "Ensure the database user has the required permissions."
-        - "Review recent database patches or upgrades that may have introduced issues."
-
-    - error: "Connection Pool Exhausted"
-      steps:
-        - "Increase the connection pool size in CMC > Servers > Properties."
-        - "Check for long-running or stuck report sessions consuming connections."
-        - "Review and optimize heavy scheduled reports."
-        - "Consider database server resource scaling."
-
+  - error: CMS Database Connection Failure
+    steps:
+    - 'Verify the database server is running: systemctl status mysql / systemctl status
+      postgresql'
+    - 'Test database connectivity: sqlplus / mysql -u user -p / psql -h host -U user'
+    - Check CMS database settings in CMC > Servers > CMS properties
+    - Verify database credentials have not expired
+    - Check firewall rules between BO server and database server
+    - Review database listener configuration and port accessibility
+  - error: SQL Exception
+    steps:
+    - Check the full stack trace for the specific SQL error code
+    - For ORA- errors, refer to Oracle error documentation
+    - 'Verify database table space is not full: SELECT * FROM dba_tablespace_usage_metrics'
+    - Check for missing or corrupt database indexes
+    - Review recent schema changes that may have caused incompatibilities
+  - error: Connection Pool Exhausted
+    steps:
+    - Increase connection pool size in CMC > Servers > Properties > Database
+    - Check for connection leaks in custom applications
+    - 'Monitor active connections: SELECT count(*) FROM v$session WHERE status=''ACTIVE'''
+    - Restart the CMS service to release stale connections
+    - Tune connection pool timeout and validation settings
+  - error: Database Deadlock
+    steps:
+    - Identify deadlocked sessions using database admin tools
+    - 'Kill the blocking session if safe: ALTER SYSTEM KILL SESSION ''sid,serial#'''
+    - Review application queries for inefficient locking patterns
+    - Enable deadlock detection logging in the database
+    - Consider adding appropriate indexes to reduce lock contention
+  - error: Database Corruption
+    steps:
+    - IMMEDIATELY stop writes to the affected tables
+    - 'Run database consistency checks: DBCC CHECKDB / ANALYZE TABLE'
+    - Restore from the most recent clean backup
+    - 'Check disk health: smartctl -a /dev/sda'
+    - Contact SAP Support with the error details and database logs
+  - error: CMS Repository Error
+    steps:
+    - Run the CMS database repair tool from CMC
+    - 'Verify CMS database integrity: Check all system tables'
+    - 'Clear the CMS cache: Restart CMS with -clean flag'
+    - Check for sufficient disk space on the CMS database volume
+    - Review SAP Note 1621147 for CMS repository troubleshooting
+  - error: Audit Database Error
+    steps:
+    - Verify audit database connectivity and credentials
+    - Check audit database tablespace for available space
+    - Review CMC > Auditing > Audit Database settings
+    - Temporarily disable auditing if it's blocking operations
+    - Rotate or archive old audit records to free space
   Authentication:
-    - error: "Authentication Failure"
-      steps:
-        - "Verify user credentials are correct."
-        - "Check if the authentication provider (LDAP/AD/Enterprise) is reachable."
-        - "Review account lockout policies in Active Directory or LDAP."
-        - "Ensure the SAP BO authentication mode matches the user's expected login type."
-        - "Restart the CMS if the authentication service is unresponsive."
-
+  - error: Authentication Failure
+    steps:
+    - Verify user credentials are correct
+    - Check if the user account is locked in CMC > Users
+    - Verify the authentication mode (Enterprise, LDAP, Windows AD)
+    - Check CMC > Authentication > configured providers
+    - Review authentication logs in bia_cms_audit.log for details
+  - error: LDAP/AD Connection Error
+    steps:
+    - 'Verify LDAP/AD server is reachable: ldapsearch -x -H ldap://server:389'
+    - Check LDAP configuration in CMC > Authentication > LDAP
+    - Verify the LDAP service account credentials have not expired
+    - 'Test LDAP connectivity: telnet ldap-server 389 / 636'
+    - Check SSL certificates if using LDAPS (port 636)
+    - Verify DNS resolution for the LDAP server hostname
+  - error: Single Sign-On Failure
+    steps:
+    - Verify Kerberos KDC is reachable and SPN is correct
+    - 'Check keytab file validity: klist -kt /path/to/keytab'
+    - Verify SSO configuration in CMC > Authentication > Windows AD
+    - Check browser security zone settings (IE/Edge)
+    - Ensure time synchronization between BO server and KDC (max 5 min skew)
+  - error: Password Expired
+    steps:
+    - Notify the user to reset their password through the appropriate system
+    - Check password policy settings in CMC > Authentication
+    - For Enterprise users, reset via CMC > Users > right-click > Properties
+    - Review password expiration policy for compliance requirements
+  - error: Account Locked
+    steps:
+    - Check CMC > Users to find and unlock the account
+    - Review audit logs for failed login attempts before lockout
+    - Check account lockout policy in CMC > Authentication
+    - If using AD/LDAP, unlock in Active Directory Users and Computers
+  - error: Active Directory Sync Error
+    steps:
+    - Check AD LDAP port connectivity
+    - Verify bind user password hasn't expired
+    - Review AD group mapping configuration
+  Authorization:
+  - error: Access Denied
+    steps:
+    - Check user's group membership in CMC > Users > Member Of
+    - Verify folder/object permissions in CMC > Folders
+    - Check access levels assigned to the user's groups
+    - 'Review the security model: explicit deny overrides allow'
+    - Use CMC > Security Query to trace effective permissions
   Licensing:
-    - error: "License Limit Reached"
-      steps:
-        - "Check current license usage via CMC > License Keys."
-        - "Verify license key expiration dates."
-        - "Contact SAP support for additional licenses or key renewal."
-        - "Review concurrent user sessions and close idle sessions."
-
+  - error: License Limit Reached
+    steps:
+    - 'Check current license usage: CMC > License Keys'
+    - Review concurrent session count vs license allocation
+    - Identify and terminate inactive/stale sessions
+    - Contact SAP licensing team for additional licenses if needed
+    - Optimize named-user vs concurrent license allocation
+  - error: Concurrent Session Limit
+    steps:
+    - Review current sessions in CMC > Sessions
+    - Configure session timeout to auto-release idle sessions
+    - Check for zombie sessions from crashed browsers
+    - Increase concurrent user licenses if demand is genuine
   Server:
-    - error: "Server Crash / Unexpected Shutdown"
-      steps:
-        - "Check Windows Event Viewer for related system-level errors."
-        - "Review the server's core dump / heap dump files if available."
-        - "Verify system resources (CPU, RAM, Disk) were not exhausted."
-        - "Check for recent BO patches or configuration changes."
-        - "Restart the SIA and monitor stability."
-
-    - error: "Out of Memory"
-      steps:
-        - "Increase the Java heap size (-Xmx) for the affected server in CMC."
-        - "Review and optimize report queries producing large datasets."
-        - "Check for memory leaks using JVM monitoring tools."
-        - "Reduce concurrent report processing limits."
-        - "Consider upgrading server RAM."
-
-    - error: "Service Unavailable"
-      steps:
-        - "Check if the service is running in CMC > Servers."
-        - "Restart the specific service or the SIA."
-        - "Verify no port conflicts exist for the service."
-        - "Review firewall rules that may block inter-service communication."
-
+  - error: Server Crash / Unexpected Shutdown
+    steps:
+    - 'Check system logs: journalctl -xe / dmesg | tail -50'
+    - 'Review core dump files if available: ls -la /opt/sap_bobj/core.*'
+    - 'Check available memory: free -h'
+    - 'Check disk space: df -h'
+    - 'Restart the server: /opt/sap_bobj/sap_bobj/ccm.sh -start all'
+    - If recurring, increase JVM heap in start script or CMC server properties
+  - error: Out of Memory
+    steps:
+    - 'Increase JVM heap: Edit -Xmx in server start script or CMC properties'
+    - 'Generate and analyze heap dump: jmap -dump:format=b,file=heap.hprof <pid>'
+    - Check for memory leaks using jvisualvm or MAT
+    - Review max concurrent reports/schedules allowed
+    - Restart the affected server process immediately
+  - error: High Memory Usage
+    steps:
+    - 'Monitor with: top -p $(pgrep -f ''sap_bobj'') or jstat -gcutil <pid>'
+    - Check GC logs for excessive Full GC events
+    - Reduce report cache sizes in CMC > Servers
+    - Schedule large reports during off-peak hours
+  - error: Garbage Collection Pause
+    steps:
+    - 'Switch to G1GC: Add -XX:+UseG1GC to JVM options'
+    - Increase heap size to reduce GC frequency
+    - 'Set max pause time: -XX:MaxGCPauseMillis=200'
+    - 'Enable GC logging: -Xloggc:/path/to/gc.log -XX:+PrintGCDetails'
+    - Analyze GC logs with GCViewer or GCEasy
+  - error: Service Unavailable
+    steps:
+    - 'Check server status: /opt/sap_bobj/sap_bobj/ccm.sh -status all'
+    - 'Restart unavailable service: ccm.sh -restart <service_name>'
+    - Check dependent services (CMS must be running first)
+    - 'Verify port accessibility: netstat -tlnp | grep <port>'
+    - Review server logs for the root cause of the failure
+  - error: Port Already In Use
+    steps:
+    - 'Find the process using the port: lsof -i :<port> or netstat -tlnp | grep <port>'
+    - Kill the conflicting process or change the port in server config
+    - Verify no duplicate server instances are running
+    - Change the port in CMC > Servers > Properties
+  - error: Server Start Failure
+    steps:
+    - Check the SIA (Server Intelligence Agent) log for details
+    - 'Verify all prerequisites: java -version, database connectivity'
+    - 'Check file permissions: ls -la /opt/sap_bobj/'
+    - 'Validate environment variables: echo $BOBJEDIR $JAVA_HOME'
+    - Try starting in verbose mode for more details
+  - error: Cluster Communication Error
+    steps:
+    - 'Verify network connectivity between cluster nodes: ping / telnet'
+    - Check CMS cluster settings in CMC > Servers
+    - Ensure all nodes use the same CMS database
+    - 'Verify time synchronization across nodes: ntpstat / chronyc sources'
+    - Check firewall rules between cluster nodes
+  - error: Server Registration Failure
+    steps:
+    - Verify CMS is running and accessible
+    - Check server-to-CMS network connectivity
+    - Verify the server's CMS registration port is open
+    - Clear server cache and retry registration
+  - error: Thread Deadlock
+    steps:
+    - 'Generate thread dump: kill -3 <pid> or jstack <pid>'
+    - Analyze the thread dump for deadlocked threads
+    - Restart the affected server as immediate remediation
+    - Review application code for lock ordering issues
+    - If recurring, contact SAP Support with thread dumps
+  - error: Adaptive Processing Server Error
+    steps:
+    - 'Restart APS: CMC > Servers > Adaptive Processing Server > Restart'
+    - Check APS-specific logs for detailed error
+    - Verify APS has adequate memory allocation
+    - Check the services hosted by this APS instance
+  - error: Event Server Error
+    steps:
+    - Check Event Server logs for specific event processing errors
+    - Verify scheduled events and file-based events configuration
+    - Restart Event Server from CMC
+    - Check file system triggers if using file-based events
+  - error: CMS Core Dump
+    steps:
+    - Check dmesg for OOM killer
+    - Review core trace file for native library crash
+    - Increase swap space or physical memory
+    - Update SAP BOBJ patch level
+  - error: SIA Bootstrap Error
+    steps:
+    - Check CMS database connection
+    - Verify credentials in ccm.sh
+    - Check cluster key compatibility
+  - error: Corba ORB Timeout
+    steps:
+    - Check network latency between nodes
+    - Increase corba timeout in CMC server properties
+    - Ensure UDP/TCP ports for CORBA aren't blocked
+  Memory:
+  - error: Out of Memory
+    steps:
+    - Increase JVM -Xmx value in the server startup configuration
+    - 'Generate heap dump for analysis: jmap -dump:live,format=b,file=heap.hprof <pid>'
+    - Restart the affected process immediately
+    - 'Monitor memory trends with: jstat -gcutil <pid> 1000'
+  - error: High Memory Usage
+    steps:
+    - 'Check current usage: ps aux --sort=-%mem | head'
+    - Reduce report cache sizes
+    - Schedule memory-intensive jobs during off-peak hours
+    - Consider adding more RAM to the server
+  - error: Garbage Collection Pause
+    steps:
+    - 'Tune GC: Use G1GC with appropriate pause time goals'
+    - Enable and review GC logs for patterns
+    - Increase young generation size if minor GCs are too frequent
   Reporting:
-    - error: "Report Processing Failure"
-      steps:
-        - "Open the report in Web Intelligence or Crystal Reports and check for errors."
-        - "Verify the data source / universe connection is valid."
-        - "Check if the report exceeds memory or row limits."
-        - "Clear the report cache and retry."
-        - "Review scheduled report parameters for correctness."
-
-    - error: "Data Source Connection Error"
-      steps:
-        - "Verify the data source connection details in CMC > Universes."
-        - "Test the database connection using a standalone DB client."
-        - "Check if the connection server is running."
-        - "Ensure ODBC/JDBC drivers are properly installed and configured."
-
-  "File System":
-    - error: "Disk Space Low"
-      steps:
-        - "Clear temporary files in the SAP BO temp directories."
-        - "Archive or delete old log files."
-        - "Move the FRS (File Repository Server) to a larger disk."
-        - "Set up disk space monitoring alerts."
-
-    - error: "File Not Found"
-      steps:
-        - "Verify the file path exists and is accessible."
-        - "Check if the FRS content is intact and not corrupted."
-        - "Restore the file from backup if it was accidentally deleted."
-        - "Review recent migrations or folder restructuring."
-
+  - error: Report Processing Failure
+    steps:
+    - Check report instance status in CMC > Instances
+    - Verify data source connectivity for the report
+    - Check available memory and CPU on the processing server
+    - Try refreshing the report manually via Launchpad
+    - Check for data-level errors (nulls, type mismatches)
+  - error: Web Intelligence Error
+    steps:
+    - Check WebI Processing Server logs
+    - Verify universe/data source connectivity
+    - 'Clear WebI cache: CMC > Servers > WebI Processing Server > Cache'
+    - Check for incompatible features in the report design
+    - Try opening in Rich Client for more detailed errors
+  - error: Report Instance Limit
+    steps:
+    - Review and delete old report instances in CMC
+    - Set instance limits per report in CMC > Properties > Limits
+    - Configure automatic instance cleanup in CMC
+    - Archive important instances before cleanup
+  - error: Report Timeout
+    steps:
+    - Increase report timeout in CMC > Servers > Processing Server
+    - Optimize the underlying query or database
+    - Add appropriate indexes to improve query performance
+    - Break complex reports into smaller sub-reports
+    - Schedule large reports during off-peak hours
+  - error: FRS (File Repository) Error
+    steps:
+    - 'Check FRS disk space: df -h /opt/sap_bobj/enterprise_xi40/FileStore'
+    - 'Verify FRS permissions: ls -la /opt/sap_bobj/enterprise_xi40/FileStore'
+    - Restart Input/Output FRS from CMC
+    - Run FRS consistency check from CMC
+    - Verify NFS/NAS mounts if using shared storage
+  - error: BEx Query Error
+    steps:
+    - Verify BW system connectivity and RFC destination
+    - Check OLAP connection settings in CMC
+    - Verify the BW query is activated and functional in SAP BW
+    - Test connection using Transaction SE37 > RFC_SYSTEM_INFO
+  - error: Publication Failure
+    steps:
+    - Check publication instance details in CMC > Instances
+    - Verify destination settings (email, FTP, file system)
+    - Check recipient list for invalid entries
+    - Verify SMTP server connectivity for email publications
+    - Test with a smaller publication first
+  - error: WebI Scheduling Timeout
+    steps:
+    - Increase destination timeout
+    - Check for long-running BW queries
+    - Check adaptive job server resources
+  - error: File Repository Corrupt
+    steps:
+    - Run FRS integrity check
+    - Restore corrupt object from backup
+    - Check disk RAID health
+  - error: Input FRS Disk Full
+    steps:
+    - Add more storage to Input FRS folder
+    - Remove old unneeded publications
+    - Configure automated limits on versions
+  - error: Output FRS Disk Full
+    steps:
+    - Purge historical instances
+    - Add disk capacity
+    - Limit instances per user/document
+  - error: Design Studio Error
+    steps:
+    - Update Design Studio addon
+    - Check BW backend RFC limits
+    - Increase APS memory allocated to Design Studio service
+  Data Source:
+  - error: Data Source Connection Error
+    steps:
+    - Test database connectivity from the BO server directly
+    - Verify ODBC/JDBC driver configuration
+    - Check connection parameters in CMC > Universes
+    - Verify database firewall rules
+    - Check database listener status
+  - error: Universe Design Error
+    steps:
+    - Open universe in Information Design Tool (IDT)
+    - Run integrity check on the universe
+    - Check for circular joins or fan traps
+    - Verify all tables and columns still exist in the database
+  - error: Connection Server Error
+    steps:
+    - Restart Connection Server from CMC
+    - Check ODBC/JDBC driver compatibility
+    - Review Connection Server logs for specific errors
+    - Verify sufficient Connection Server instances for workload
+  - error: Semantic Layer Parsing Error
+    steps:
+    - Validate universe in IDT
+    - Check for obsolete proprietary functions
+    - Ensure correct database middleware installed
+  File System:
+  - error: Disk Space Low
+    steps:
+    - 'Check disk usage: df -h && du -sh /opt/sap_bobj/* | sort -rh | head'
+    - 'Clean old log files: find /opt/sap_bobj -name ''*.log'' -mtime +30 -delete'
+    - Clean old report instances from CMC
+    - 'Archive or compress old logs: gzip /opt/sap_bobj/logging/*.log.old'
+    - Extend disk partition or add additional storage
+  - error: File Not Found
+    steps:
+    - Verify the file path exists and is spelled correctly
+    - Check file system permissions
+    - 'Verify symlinks are valid: ls -la /path/to/file'
+    - Check if the file was moved or deleted by another process
+  - error: File Permission Error
+    steps:
+    - 'Fix permissions: chmod 755 /path/to/file'
+    - 'Fix ownership: chown boadmin:bobj /path/to/file'
+    - 'Check SELinux context: ls -Z /path/to/file'
+    - 'If SELinux, set context: chcon -t httpd_sys_content_t /path/to/file'
+  - error: Temp File Cleanup Error
+    steps:
+    - 'Manually clean temp directory: rm -rf /tmp/sap_bobj_*'
+    - Verify temp directory permissions and ownership
+    - 'Check for processes holding file locks: lsof +D /tmp'
+    - Configure automatic temp cleanup in cron
+  - error: Log File Rotation Error
+    steps:
+    - 'Check logrotate configuration: cat /etc/logrotate.d/sapbobj'
+    - 'Test logrotate: logrotate -d /etc/logrotate.d/sapbobj'
+    - Verify log directory has write permissions
+    - 'Force rotation: logrotate -f /etc/logrotate.d/sapbobj'
   Network:
-    - error: "Network Timeout"
-      steps:
-        - "Check network connectivity between BO servers and dependent systems."
-        - "Increase timeout settings in the relevant server configuration."
-        - "Review firewall and proxy settings for blocked connections."
-        - "Check for network congestion or bandwidth issues."
-
-    - error: "SSL / TLS Error"
-      steps:
-        - "Verify SSL certificates are valid and not expired."
-        - "Ensure the correct certificate is imported into the BO keystore."
-        - "Check TLS version compatibility between client and server."
-        - "Renew or re-issue certificates through your Certificate Authority."
+  - error: Network Timeout
+    steps:
+    - 'Check network connectivity: ping / traceroute target-server'
+    - Increase timeout settings in CMC > Servers > Properties
+    - 'Check for network congestion or packet loss: mtr target-server'
+    - 'Verify DNS resolution: nslookup / dig target-server'
+  - error: SSL / TLS Error
+    steps:
+    - 'Check certificate expiry: openssl s_client -connect host:443 -servername host'
+    - 'Verify certificate chain: openssl verify -CAfile ca-bundle.crt cert.pem'
+    - 'Import certificates to Java keystore: keytool -importcert -file cert.pem -keystore
+      cacerts'
+    - Check TLS version compatibility (disable TLS 1.0/1.1 if needed)
+    - Verify keystore password and format
+  - error: DNS Resolution Failure
+    steps:
+    - 'Check DNS: nslookup hostname / dig hostname'
+    - Verify /etc/resolv.conf has correct DNS servers
+    - Add hostname to /etc/hosts as a temporary workaround
+    - Test with IP address to confirm DNS is the issue
+  - error: Proxy Error
+    steps:
+    - 'Check proxy/load balancer health: curl -v http://proxy-server'
+    - Verify upstream servers are running and healthy
+    - "Check proxy timeout settings \u2014 increase if needed"
+    - Review proxy error logs for specific upstream failures
+  Administration:
+  - error: Backup Failure
+    steps:
+    - Check backup log for specific error details
+    - Verify backup destination has sufficient space
+    - 'Test backup manually: /opt/sap_bobj/sap_bobj/biarutil -export'
+    - Check database backup is completing successfully
+    - Verify backup schedule hasn't been disrupted by maintenance windows
+  - error: Promotion Management Error
+    steps:
+    - Check LCM job details in CMC > Promotion Management
+    - Verify source and target CMS connectivity
+    - Check for dependency conflicts in the promoted objects
+    - Review promotion log files for specific errors
+    - Try promoting fewer objects to isolate the issue
+  - error: RESTful Web Service Error
+    steps:
+    - Verify WACS (Web Application Container Server) is running.
+    - Restart the WACS service from CMC.
+    - Check memory allocation for the WACS process.
+    - Verify WACS dependent components are healthy.
+  - error: WebI Export Document Error
+    steps:
+    - Verify sufficient temp space on the WebI Processing Server.
+    - Check for memory leaks during document rendering.
+    - Attempt simple exports to isolate specific document elements causing failures.
+    - Upgrade Web Intelligence to the highest patch level.
+  - error: BI Launch Pad Timeout
+    steps:
+    - Instruct the user to log back into BI Launch Pad.
+    - Configure session timeout limits in Tomcat web.xml if higher duration is required.
+    - Check cluster settings if users are occasionally disconnected through load balancer.
+  - error: Cache Server Disk Full
+    steps:
+    - Clean up cache server directory space manually if caching limits are ignored.
+    - Configure max cache size in the CMC.
+    - Move cache server storage location to a higher capacity disk mount point.
+  - error: Node Agent Down
+    steps:
+    - Check if the SAP BOBJ process (Server Intelligence Agent) crashed on the OS.
+    - Review OS logs (/var/log/messages) for signs of OOM Kill.
+    - 'Start SIA process: ccm.sh -start sia'
+  - error: Tomcat Integration Error
+    steps:
+    - Verify Tomcat to CMS communication.
+    - Check bobj-specific configurations in Tomcat (e.g. BI Launchpad properties).
+    - Restart the Tomcat server holding the BO web apps.
+  - error: Repository Synchronization Error
+    steps:
+    - Run the Repository Diagnostic Tool (RDT).
+    - Repair any inconsistencies reported by RDT.
+    - Ensure that the CMS database backup is current and valid.
+  - error: Auditor Connection Error
+    steps:
+    - Audit database might be offline or undergoing maintenance.
+    - Verify audit database user privileges.
+    - Try recreating the ODBC/JDBC DSN for the audit connection.
+  - error: Dashboard Design Error
+    steps:
+    - Flash/SWF dashboards have deprecated components. Consider migrating to modern
+      formats.
+    - Check web service connection limits linked to Dashboard parameters.
+    - Increase timeout delays in cross-domain policies.
+  - error: Central Management Server Auto-Restart
+    steps:
+    - Investigate the Server Crash preceding the restart.
+    - Enable detailed trace logging to isolate the crash root cause.
+    - Ensure Auto-Restart is configured to prevent extended downtime.
+  Tomcat:
+  - error: Tomcat Startup Failure
+    steps:
+    - 'Check catalina.out for startup errors: tail -100 /opt/sap_bobj/tomcat/logs/catalina.out'
+    - 'Verify JAVA_HOME is set correctly: echo $JAVA_HOME && java -version'
+    - 'Check Tomcat port availability: netstat -tlnp | grep 8080'
+    - 'Verify file permissions: ls -la /opt/sap_bobj/tomcat/bin/*.sh'
+    - Check for corrupt WAR files in webapps directory
+  - error: Tomcat Shutdown Error
+    steps:
+    - 'Force stop: kill -9 $(cat /opt/sap_bobj/tomcat/logs/catalina.pid)'
+    - Check for threads preventing clean shutdown
+    - Verify shutdown port (default 8005) is accessible
+    - Check for applications with destroy-on-shutdown issues
+  - error: Tomcat Shutdown Hang
+    steps:
+    - 'Generate thread dump to identify blocking threads: jstack <pid>'
+    - Check for daemon threads that are not finishing
+    - Increase shutdown timeout in catalina.sh
+    - 'Force kill if needed: kill -9 <pid>'
+    - Review web applications for proper shutdown hooks
+  - error: Catalina Not Configured
+    steps:
+    - 'Set environment: export CATALINA_HOME=/opt/sap_bobj/tomcat'
+    - 'Set base: export CATALINA_BASE=/opt/sap_bobj/tomcat'
+    - 'Verify setenv.sh exists: cat /opt/sap_bobj/tomcat/bin/setenv.sh'
+    - Check catalina.properties file exists and is readable
+  - error: Tomcat Connector Error
+    steps:
+    - 'Check server.xml Connector configuration: cat conf/server.xml | grep -A5 Connector'
+    - 'Verify port is not in use: netstat -tlnp | grep <port>'
+    - Check protocol handler configuration (HTTP/1.1, AJP/1.3)
+    - Review connector thread pool settings (maxThreads, acceptCount)
+    - Restart Tomcat to apply configuration changes
+  - error: AJP Connector Failure
+    steps:
+    - Verify AJP is enabled in server.xml (typically port 8009)
+    - Check Apache mod_jk or mod_proxy_ajp configuration
+    - Verify AJP secret key matches between Apache and Tomcat
+    - 'Test AJP connectivity: telnet localhost 8009'
+    - Check requiredSecret attribute in server.xml (Tomcat 8.5.51+)
+  - error: Tomcat Port Conflict
+    steps:
+    - 'Find conflicting process: lsof -i :8080 or fuser 8080/tcp'
+    - Change Tomcat ports in server.xml (HTTP, AJP, shutdown)
+    - Kill the conflicting process if it's a stale Tomcat instance
+    - Check for multiple Tomcat instances with identical ports
+  - error: Tomcat SSL Configuration Error
+    steps:
+    - 'Verify keystore: keytool -list -v -keystore /path/to/keystore.jks'
+    - Check keystoreFile and keystorePass in server.xml Connector
+    - 'Verify certificate validity: openssl x509 -in cert.pem -noout -dates'
+    - Check SSL protocol configuration (TLSv1.2, TLSv1.3)
+    - Ensure correct keystore format (JKS vs PKCS12)
+  - error: Tomcat Max Connections Reached
+    steps:
+    - 'Increase maxConnections in server.xml Connector (default: 10000)'
+    - 'Increase acceptCount for connection queue (default: 100)'
+    - 'Monitor active connections: netstat -an | grep :8080 | wc -l'
+    - Check for connection leaks in web applications
+  - error: Tomcat HTTP 500 Internal Server Error
+    steps:
+    - Check application logs for exception stack traces
+    - Review catalina.out and localhost.log for details
+    - Verify database connectivity from the web application
+    - Check application configuration files for errors
+    - Temporarily enable verbose error pages in web.xml for debugging
+  - error: Tomcat HTTP 404 Not Found
+    steps:
+    - Verify the context path and URL mapping
+    - 'Check if the web application is deployed: ls webapps/'
+    - Verify servlet mappings in the application's web.xml
+    - 'Check if the application context started: grep ''deployed'' catalina.out'
+  - error: Tomcat HTTP 403 Forbidden
+    steps:
+    - Check security-constraint elements in web.xml
+    - Verify Valve configuration (RemoteAddrValve, RemoteHostValve)
+    - Check if the IP address is in the allow/deny list
+    - Review Realm authentication configuration
+  - error: Tomcat HTTP 401 Unauthorized
+    steps:
+    - Verify user credentials in tomcat-users.xml
+    - Check Realm configuration in server.xml or context.xml
+    - Verify the user has the required role
+    - Clear browser cache and cookies, try again
+  - error: Tomcat HTTP 502 Bad Gateway
+    steps:
+    - Check if Tomcat backend is running and healthy
+    - Verify reverse proxy (Apache/Nginx) connectivity to Tomcat
+    - Increase proxy timeout settings
+    - Check for Tomcat thread pool exhaustion
+  - error: Tomcat HTTP 503 Service Unavailable
+    steps:
+    - 'Check if Tomcat is running: ps aux | grep tomcat'
+    - "Check thread pool status \u2014 may be exhausted"
+    - 'Restart Tomcat: systemctl restart tomcat'
+    - Check if application is deployed and started
+    - Review load balancer health check configuration
+  - error: Tomcat Deployment Failure
+    steps:
+    - 'Check localhost.log for deployment errors: tail -50 localhost.YYYY-MM-DD.log'
+    - 'Verify WAR file integrity: jar -tf application.war'
+    - Check web.xml for XML syntax errors
+    - Verify required libraries are in WEB-INF/lib
+    - Check for conflicting context paths
+  - error: WAR File Deployment Error
+    steps:
+    - 'Verify WAR file is not corrupt: jar -tf /path/to/app.war'
+    - Check webapps directory permissions
+    - Check available disk space for WAR extraction
+    - 'Try manual deployment: cp app.war /opt/sap_bobj/tomcat/webapps/'
+  - error: Context Startup Failure
+    steps:
+    - Check localhost.log for context initialization errors
+    - Verify all required JNDI resources exist in context.xml
+    - Check web.xml deployment descriptor for errors
+    - Verify required classes/JARs are available
+  - error: web.xml Parse Error
+    steps:
+    - 'Validate web.xml syntax: xmllint --noout WEB-INF/web.xml'
+    - Check web.xml against the correct servlet spec schema
+    - Look for encoding issues (BOM, invalid characters)
+    - Compare with a known working web.xml
+  - error: Duplicate Context Path
+    steps:
+    - Check for duplicate context definitions in server.xml
+    - Remove duplicate WAR/directory from webapps/
+    - Check META-INF/context.xml in each application
+    - Verify autoDeploy and deployOnStartup settings
+  - error: Tomcat Session Error
+    steps:
+    - 'Check session timeout in web.xml: <session-timeout>30</session-timeout>'
+    - Verify session cookie configuration (secure, httpOnly)
+    - Monitor session count via JMX or Manager app
+    - Check for session serialization issues
+  - error: Session Persistence Error
+    steps:
+    - Check PersistentManager configuration in context.xml
+    - Verify session store (JDBC/File) connectivity and permissions
+    - Ensure session objects implement java.io.Serializable
+    - Check disk space if using FileStore for sessions
+  - error: Session ID Collision
+    steps:
+    - Verify randomClass setting in Manager component
+    - 'Increase session ID length: sessionIdLength in context.xml'
+    - Check for load balancer sticky session misconfiguration
+  - error: Session Fixation Attack
+    steps:
+    - 'Verify changeSessionIdOnAuthentication is enabled (default: true)'
+    - Review access logs for suspicious session patterns
+    - Implement CSRF protection in the application
+    - Check for unauthorized session reuse patterns
+  - error: Tomcat Thread Pool Exhausted
+    steps:
+    - Increase maxThreads in server.xml Connector (default 200)
+    - 'Generate thread dump: jstack $(pgrep -f catalina) > /tmp/threads.txt'
+    - Check for slow or stuck requests blocking threads
+    - 'Monitor threads: jconsole or curl localhost:8080/manager/status'
+    - Increase acceptCount for queued connections
+  - error: Thread Leak Detected
+    steps:
+    - Identify the leaking web application from the log message
+    - Review application code for threads not properly shutdown
+    - Implement ServletContextListener to clean up threads on undeploy
+    - Use Executor/ExecutorService instead of raw Thread creation
+  - error: Request Processing Timeout
+    steps:
+    - Check for slow database queries or external service calls
+    - Increase connectionTimeout in server.xml Connector
+    - Configure StuckThreadDetectionValve for monitoring
+    - Profile slow endpoints to identify bottlenecks
+  - error: Tomcat ClassNotFoundException
+    steps:
+    - Verify the missing class JAR is in WEB-INF/lib or Tomcat lib/
+    - 'Check classpath: echo $CLASSPATH'
+    - Check for JAR version conflicts between Tomcat lib/ and WEB-INF/lib
+    - Download and deploy the missing dependency
+    - Use mvn dependency:tree to check for transitive dependency issues
+  - error: JAR Scanning Error
+    steps:
+    - Add JARs to TldScanner skip list in catalina.properties
+    - Check jarsToSkip property in catalina.properties
+    - Remove unnecessary JARs from WEB-INF/lib
+    - 'Check for corrupt JAR files: jar -tf /path/to/suspicious.jar'
+  - error: Classpath Conflict
+    steps:
+    - Use mvn dependency:tree or gradle dependencies to identify conflicts
+    - Exclude duplicate JARs from WEB-INF/lib
+    - Ensure Tomcat-provided JARs are not duplicated in the application
+    - Set delegate=false in context.xml to prioritize app classloader
+  - error: Memory Leak in ClassLoader
+    steps:
+    - Enable the JreMemoryLeakPreventionListener in server.xml
+    - Review the application for known leak patterns
+    - Check for ThreadLocal variables not cleaned up
+    - Check for JDBC drivers not deregistered on undeploy
+    - 'Use Tomcat leak detection: MemoryLeakTrackingListener'
+  - error: Tomcat JNDI / DataSource Error
+    steps:
+    - Verify JNDI resource definition in context.xml or server.xml
+    - Check resource-ref in application's web.xml
+    - Test database connectivity with the configured credentials
+    - Verify JDBC driver JAR is in Tomcat lib/ (not WEB-INF/lib)
+    - Check JNDI name matches between context.xml and application code
+  - error: Connection Pool Leak
+    steps:
+    - Enable removeAbandoned=true in DataSource configuration
+    - Set removeAbandonedTimeout to detect leaked connections
+    - Enable logAbandoned=true to log stack traces of leaked connections
+    - Review application code for unclosed Connection/Statement/ResultSet
+  - error: DataSource Initialization Failure
+    steps:
+    - Verify database server is running and accessible
+    - Check JDBC URL, username, and password in context.xml
+    - Verify JDBC driver JAR is in Tomcat lib/ directory
+    - 'Test connection manually: java -cp driver.jar DriverClass'
+  - error: JSP Compilation Error
+    steps:
+    - Check JSP file for syntax errors at the line number in the error
+    - "Verify JDK is installed (not just JRE) \u2014 JSP needs javac"
+    - Check JAVA_HOME points to a JDK
+    - 'Clear compiled JSP cache: rm -rf work/Catalina/localhost/<app>/org'
+    - Restart Tomcat to recompile JSPs
+  - error: Servlet Exception
+    steps:
+    - Check the full exception stack trace in catalina.out
+    - Verify servlet class exists in WEB-INF/classes or WEB-INF/lib
+    - Check servlet initialization parameters
+    - Review servlet dependencies and classpath
+  - error: Servlet Initialization Error
+    steps:
+    - Check load-on-startup value in web.xml
+    - Verify all init-param values are correct
+    - Check for required resources (database, external service) availability
+    - Review the servlet's init() method for potential failures
+  - error: Tomcat Valve Error
+    steps:
+    - Check Valve configuration in server.xml or context.xml
+    - Verify class name and package for custom Valves
+    - Check Valve JAR is in Tomcat lib/ directory
+    - Test without the Valve to confirm it's the cause
+  - error: Tomcat Security Constraint Violation
+    steps:
+    - Review security-constraint in web.xml
+    - Check auth-constraint role-name matches Realm roles
+    - Verify user-to-role mapping in tomcat-users.xml or Realm
+    - Check transport-guarantee (CONFIDENTIAL requires HTTPS)
+  - error: Manager App Unauthorized Access
+    steps:
+    - Verify user and roles in tomcat-users.xml
+    - Ensure user has manager-gui/manager-script role
+    - Check RemoteAddrValve in Manager context.xml
+    - For remote access, add your IP to the allow pattern
+  - error: CSRF Token Validation Failed
+    steps:
+    - Clear browser cookies and try again
+    - Check for stale Manager sessions
+    - Verify CSRF filter configuration in the application
+    - Check if a reverse proxy is stripping CSRF headers
+  - error: WebSocket Error
+    steps:
+    - Check WebSocket endpoint annotations or configuration
+    - Verify proxy/load balancer supports WebSocket (upgrade headers)
+    - Check Tomcat WebSocket configuration in server.xml
+    - Monitor WebSocket connections for resource exhaustion
+  - error: Tomcat Web Application Error
+    steps:
+    - Check catalina.out for the complete stack trace
+    - Review the specific Tomcat component mentioned in the error
+    - Check Tomcat version compatibility with the application
+    - Search Apache Bugzilla for known issues with this component
+  - error: Realm Configuration Error
+    steps:
+    - Verify Realm class and attributes in server.xml
+    - Test database connectivity for JDBCRealm/DataSourceRealm
+    - Check LDAP settings for JNDIRealm
+    - Verify table/column names for database-backed Realms
+  - error: Tomcat JMX Error
+    steps:
+    - Check JMX configuration in setenv.sh / catalina.sh
+    - Verify JMX port is available and not firewalled
+    - Check MBean naming rules for custom MBeans
+    - Restart Tomcat after JMX configuration changes
+  - error: Tomcat NIO Channel Error
+    steps:
+    - Check for client connection resets (often client-side issue)
+    - Increase socket buffer sizes in server.xml
+    - 'Monitor network for packet loss: mtr target-server'
+    - 'Check ulimit settings: ulimit -n (file descriptors)'
+  - error: Tomcat Access Log Error
+    steps:
+    - Verify AccessLogValve configuration in server.xml
+    - Check log directory permissions and available disk space
+    - Verify log pattern syntax
+    - Rotate access logs to prevent disk exhaustion
+  - error: Tomcat Async Request Error
+    steps:
+    - Verify async-supported is set to true in web.xml
+    - Check AsyncContext timeout settings
+    - Ensure async listener handles onError properly
+    - Check for thread safety issues in async handlers
+  - error: Tomcat Request Header Too Large
+    steps:
+    - Increase 'maxHttpHeaderSize' attribute in Tomcat server.xml Connector.
+    - Investigate if client is sending unnecessarily large cookies or auth tokens.
+    - Clear client-side browser cookies (especially SSO cookies like Kerberos/SAML).
+  - error: Tomcat Client Abort Exception
+    steps:
+    - Often ignored safely. The client closed the browser or connection before Tomcat
+      responded.
+    - If combined with slow processing, optimize the application response time.
+    - Check load balancer timeouts if the proxy is prematurely closing the connection.
+  - error: Tomcat PermGen/Metaspace OutOfMemory
+    steps:
+    - 'Increase Metaspace size: -XX:MaxMetaspaceSize=512m (or PermSize for Java 7).'
+    - Check for ClassLoader leaks resulting from numerous WAR redeployments.
+    - Restart Tomcat to immediately clear exhausted Metaspace.
+  - error: Tomcat File Upload Size Exceeded
+    steps:
+    - Increase 'maxPostSize' in server.xml Connector.
+    - Check application-specific multipart config max-file-size in web.xml.
+    - Ensure the reverse proxy (like Nginx client_max_body_size) allows large payloads.
+  - error: Tomcat Keystore Password Incorrect
+    steps:
+    - Verify the keystore password provided in server.xml (keystorePass).
+    - 'Test the keystore access manually: keytool -list -keystore <file>'
+    - Re-import certificates or recreate keystore if corrupt.
+  - error: Tomcat Illegal Jsp Attribute
+    steps:
+    - Review the specific JSP file and line mentioned in the error.
+    - Fix syntax or unsupported attributes based on the Servlet specifications.
+    - Clear the compiled JSP work directory (work/Catalina/localhost).
+  - error: Tomcat CORS Policy Block
+    steps:
+    - Configure CORS filter in Tomcat global web.xml or application web.xml.
+    - Ensure correct 'Access-Control-Allow-Origin' headers are being passed.
+    - Check if frontend URLs have mismatched HTTP/HTTPS protocols.
+  - error: Tomcat Invalid URI Character
+    steps:
+    - Enable 'relaxedPathChars' and 'relaxedQueryChars' in server.xml to accept characters.
+    - Ensure applications URL-encode query parameters correctly.
+    - Block the malicious requests if they originate from vulnerability scanners.
+  - error: Tomcat Cluster Communication Error
+    steps:
+    - 'Verify multicast is enabled on the network interface: ping 228.0.0.4.'
+    - Ensure firewall permits traffic on Tomcat cluster ports (4000).
+    - Check the bind addresses defined in Tomcat server.xml clustering configuration.
+  - error: Tomcat Outdated Java Version
+    steps:
+    - Ensure the Tomcat JAVA_HOME points to the JDK identical to the compilation version.
+    - Update Tomcat server to use JRE 8 / 11 / 17 compatible with the application.
+    - Recompile the WAR file targeting the actual Tomcat Java version (e.g., -source
+      11).
+  - error: Tomcat Manager Authentication Lockout
+    steps:
+    - Wait for the LockOutRealm timer to expire to regain access.
+    - Identify the IP address causing the bad requests in access logs.
+    - Block bruteforce IP from firewall or adjust lockout limits in server.xml.
+  - error: Tomcat Chunked Coding Error
+    steps:
+    - Investigate the reverse proxy transferring invalid chunk headers.
+    - Ensure Tomcat connector properly negotiates transfer encoding.
+    - Drop requests from misbehaving client bots creating malformed packets.
+  - error: Tomcat OutOfMemory Metaspace
+    steps:
+    - Increase -XX:MaxMetaspaceSize
+    - Check for repeated webapp redeployments
+    - Profile with VisualVM for classloader leaks
+  - error: Tomcat File Descriptor Limit
+    steps:
+    - Increase ulimit -n to 65535 or higher
+    - Check /etc/security/limits.conf
+    - Verify app is properly closing sockets and files
+  - error: Tomcat WebSocket Handshake Fail
+    steps:
+    - Check proxy/LB configuration for Upgrade headers
+    - Ensure Tomcat version supports WebSockets spec
+    - Check WSS certificate validity
+  - error: Tomcat Slow HTTP POST Attack
+    steps:
+    - Enable connection timeout in server.xml
+    - Configure reverse proxy (Nginx/Apache) to drop slow clients
+    - Limit connection duration
+  - error: Tomcat Coyote Max Headers Sent
+    steps:
+    - Increase maxHttpHeaderSize
+    - Review application logic injecting excessive headers
+    - Check for looping redirects accumulating cookies
+  - error: Tomcat Catalina.out Tailing Error
+    steps:
+    - Use logrotate or Tomcat built-in rotater for catalina.out
+    - Check disk space where logs reside
+    - Clear giant log file manually
+  - error: Tomcat Async Dispatch Reject
+    steps:
+    - Increase async thread pool executor maxThreads
+    - Monitor long-running async requests
+    - Drop abandoned async contexts
+  - error: Tomcat Request Entity Too Large
+    steps:
+    - Increase maxPostSize in Connector
+    - If using reverse proxy, increase client_max_body_size (Nginx)
+    - Check app limits for file uploads
+  - error: Tomcat Jasper Compilation Timeout
+    steps:
+    - Precompile JSPs during build/deployment
+    - Provide more CPU/Memory for background compilation
+    - Delete work/Catalina directory
+  - error: Tomcat Unrecognized SNI
+    steps:
+    - Verify client is requesting valid host
+    - Add defaultSSLHostConfigName in server.xml
+    - Check certificate subject alternative names (SAN)
+  Application:
+  - error: Java Exception
+    steps:
+    - Review the full stack trace for the root cause
+    - Check the exception type and message for clues
+    - Look for the first application class in the stack trace
+    - Search SAP Knowledge Base for the specific exception
+  General:
+  - error: Generic Error
+    steps:
+    - Review the log file for surrounding context (lines before/after)
+    - Check timestamps for correlating events
+    - Search SAP Community forums for similar error messages
+    - Contact SAP Support if the error persists
+  - error: Generic Warning
+    steps:
+    - Monitor if the warning recurs frequently
+    - Check if a related error follows this warning
+    - Review the component generating the warning
+    - Adjust log severity thresholds if warnings are too noisy

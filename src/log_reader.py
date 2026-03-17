@@ -1,19 +1,33 @@
 """
 log_reader.py — Log File Discovery and Reading
 
-Scans SAP Business Objects log directories, discovers log files
-matching configured extensions, and reads their content.
+Scans SAP Business Objects and Tomcat log directories for log files,
+filters by age, and reads their content with encoding fallbacks.
 """
 
 import os
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from src.utils import get_file_size_display
 
+# File-name patterns that identify Tomcat logs
+_TOMCAT_PATTERNS = (
+    "catalina", "localhost", "host-manager",
+    "manager", "tomcat", "access_log",
+)
+
+
+def _identify_source(file_path):
+    """Return 'tomcat' if the path/name looks like a Tomcat log, else 'sap_bo'."""
+    lower = str(file_path).lower()
+    if any(p in lower for p in _TOMCAT_PATTERNS):
+        return "tomcat"
+    return "sap_bo"
+
 
 class LogFile:
-    """Represents a single log file with its metadata and content."""
+    """A single log file with metadata and content."""
 
     def __init__(self, file_path):
         self.path = Path(file_path)
@@ -23,143 +37,163 @@ class LogFile:
         self.size_display = get_file_size_display(file_path) if self.path.exists() else "0 B"
         self.modified_time = (
             datetime.fromtimestamp(os.path.getmtime(file_path))
-            if self.path.exists()
-            else None
+            if self.path.exists() else None
         )
+        self.source_type = _identify_source(self.path)
         self.lines = []
         self.line_count = 0
         self.is_loaded = False
 
     def __repr__(self):
-        return f"LogFile(name='{self.name}', size='{self.size_display}', lines={self.line_count})"
+        return (f"LogFile({self.name!r}, source={self.source_type!r}, "
+                f"size={self.size_display!r}, lines={self.line_count})")
 
 
 class LogReader:
     """
-    Discovers and reads log files from SAP Business Objects directories.
+    Discovers and reads log files from one or more directories.
 
-    Usage:
-        reader = LogReader(config)
-        log_files = reader.discover_and_read()
+    Supports:
+      - Multiple directories (SAP BO + Tomcat)
+      - File-age filtering (max_age_days)
+      - Comma-separated --log-dir from CLI
     """
 
     def __init__(self, config, log_dir_override=None):
-        """
-        Initialize the LogReader.
+        settings = config.get("log_settings", {})
 
-        Args:
-            config (dict): Parsed configuration dictionary.
-            log_dir_override (str, optional): Override the log directory from config.
-        """
-        log_settings = config.get("log_settings", {})
+        # Resolve directories
+        if log_dir_override:
+            self.log_directories = [d.strip() for d in log_dir_override.split(",") if d.strip()]
+        else:
+            self.log_directories = settings.get("log_directories", [])
+            if not self.log_directories:
+                self.log_directories = [settings.get("log_directory", ".")]
 
-        self.log_directory = log_dir_override or log_settings.get("log_directory", ".")
-        self.extensions = log_settings.get("log_extensions", [".log"])
-        self.max_files = log_settings.get("max_files", 50)
-        self.max_lines = log_settings.get("max_lines_per_file", 0)
-        self.encoding = log_settings.get("encoding", "utf-8")
-        self.fallback_encoding = log_settings.get("fallback_encoding", "latin-1")
+        self.extensions = settings.get("log_extensions", [".log"])
+        self.max_files = settings.get("max_files", 50)
+        self.max_age_days = settings.get("max_age_days", 7)
+        self.max_lines = settings.get("max_lines_per_file", 0)
+        self.encoding = settings.get("encoding", "utf-8")
+        self.fallback_encoding = settings.get("fallback_encoding", "latin-1")
+
+    # ── Discovery ──────────────────────────────────────────
 
     def discover_files(self):
-        """
-        Scan the log directory and find all matching log files.
-
-        Returns:
-            list[LogFile]: List of discovered LogFile objects.
-        """
-        log_dir = Path(self.log_directory)
-
-        if not log_dir.exists():
-            print(f"[ERROR] Log directory does not exist: {log_dir}")
-            return []
-
-        if not log_dir.is_dir():
-            print(f"[ERROR] Path is not a directory: {log_dir}")
-            return []
-
+        """Scan directories, filter by extension and age, return LogFile list."""
         discovered = []
-        for root, _dirs, files in os.walk(log_dir):
-            for filename in files:
-                file_path = Path(root) / filename
-                if file_path.suffix.lower() in self.extensions:
-                    discovered.append(LogFile(file_path))
 
-        # Sort by modification time (most recent first)
-        discovered.sort(
-            key=lambda f: f.modified_time or datetime.min, reverse=True
-        )
+        for dir_path in self.log_directories:
+            found = self._scan_directory(dir_path)
+            discovered.extend(found)
 
-        # Apply max_files limit
+        if not discovered:
+            print("[WARNING] No log files found in any configured directory.")
+            return []
+
+        # Age filter
+        discovered = self._filter_by_age(discovered)
+        if not discovered:
+            return []
+
+        # Sort newest first, apply limit
+        discovered.sort(key=lambda f: f.modified_time or datetime.min, reverse=True)
         if self.max_files > 0 and len(discovered) > self.max_files:
-            print(
-                f"[INFO] Found {len(discovered)} log files, "
-                f"limiting to {self.max_files} most recent."
-            )
-            discovered = discovered[: self.max_files]
+            print(f"  📋 Limiting to {self.max_files} most recent files "
+                  f"(of {len(discovered)} found).")
+            discovered = discovered[:self.max_files]
 
         return discovered
 
+    def _scan_directory(self, dir_path):
+        """Walk a single directory and collect matching LogFile objects."""
+        log_dir = Path(dir_path)
+        if not log_dir.exists():
+            print(f"[WARNING] Directory does not exist: {log_dir}")
+            return []
+        if not log_dir.is_dir():
+            print(f"[WARNING] Not a directory: {log_dir}")
+            return []
+
+        found = []
+        for root, _, files in os.walk(log_dir):
+            for name in files:
+                fp = Path(root) / name
+                if fp.suffix.lower() in self.extensions:
+                    found.append(LogFile(fp))
+
+        label = "Tomcat" if "tomcat" in str(log_dir).lower() else "SAP BO"
+        print(f"  📁 {log_dir} ({label}) — {len(found)} file(s)")
+        return found
+
+    def _filter_by_age(self, files):
+        """Remove files older than max_age_days."""
+        if self.max_age_days <= 0:
+            return files
+
+        cutoff = datetime.now() - timedelta(days=self.max_age_days)
+        recent = [f for f in files if f.modified_time and f.modified_time >= cutoff]
+        skipped = len(files) - len(recent)
+
+        if skipped > 0:
+            print(f"  ⏭️  Skipped {skipped} file(s) older than {self.max_age_days} days.")
+        if not recent:
+            print(f"[WARNING] No log files within the last {self.max_age_days} days.")
+        return recent
+
+    # ── Reading ────────────────────────────────────────────
+
     def read_file(self, log_file):
-        """
-        Read the content of a single log file.
-
-        Args:
-            log_file (LogFile): The log file to read.
-
-        Returns:
-            LogFile: The same LogFile object with lines populated.
-        """
+        """Read a single log file with encoding fallback."""
         if not log_file.path.exists():
-            print(f"[WARNING] File no longer exists: {log_file.path}")
+            print(f"[WARNING] File vanished: {log_file.path}")
             return log_file
 
         try:
-            lines = self._read_with_encoding(log_file.path, self.encoding)
+            lines = self._read(log_file.path, self.encoding)
         except (UnicodeDecodeError, UnicodeError):
             try:
-                lines = self._read_with_encoding(log_file.path, self.fallback_encoding)
-            except Exception as e:
-                print(f"[ERROR] Failed to read {log_file.name}: {e}")
+                lines = self._read(log_file.path, self.fallback_encoding)
+            except Exception as exc:
+                print(f"[ERROR] Cannot read {log_file.name}: {exc}")
                 return log_file
 
-        # Apply line limit if configured
-        if self.max_lines > 0 and len(lines) > self.max_lines:
-            lines = lines[: self.max_lines]
+        if self.max_lines > 0:
+            lines = lines[:self.max_lines]
 
         log_file.lines = lines
         log_file.line_count = len(lines)
         log_file.is_loaded = True
-
         return log_file
 
-    def _read_with_encoding(self, file_path, encoding):
-        """Read file lines with the specified encoding."""
-        with open(file_path, "r", encoding=encoding, errors="replace") as f:
-            return f.readlines()
+    @staticmethod
+    def _read(path, encoding):
+        with open(path, "r", encoding=encoding, errors="replace") as fh:
+            return fh.readlines()
+
+    # ── High-Level API ─────────────────────────────────────
 
     def discover_and_read(self):
-        """
-        Discover log files and read all of them.
-
-        Returns:
-            list[LogFile]: List of LogFile objects with content loaded.
-        """
+        """Discover files, read them, return list of loaded LogFile objects."""
         files = self.discover_files()
-
         if not files:
-            print("[INFO] No log files found in the specified directory.")
+            print("[INFO] No log files to process.")
             return []
 
-        print(f"[INFO] Discovered {len(files)} log file(s). Reading contents...")
+        tomcat = sum(1 for f in files if f.source_type == "tomcat")
+        sapbo = len(files) - tomcat
+        print(f"\n[INFO] {len(files)} file(s) to read "
+              f"(SAP BO: {sapbo}, Tomcat: {tomcat})...")
 
-        loaded_files = []
-        for log_file in files:
-            self.read_file(log_file)
-            if log_file.is_loaded:
-                loaded_files.append(log_file)
-                print(f"  ✓ {log_file.name} ({log_file.size_display}, {log_file.line_count} lines)")
+        loaded = []
+        for lf in files:
+            self.read_file(lf)
+            if lf.is_loaded:
+                icon = "🐱" if lf.source_type == "tomcat" else "📊"
+                print(f"  {icon} {lf.name} ({lf.size_display}, {lf.line_count} lines)")
+                loaded.append(lf)
             else:
-                print(f"  ✗ {log_file.name} — failed to read")
+                print(f"  ✗ {lf.name} — failed")
 
-        print(f"[INFO] Successfully loaded {len(loaded_files)} file(s).\n")
-        return loaded_files
+        print(f"[INFO] Loaded {len(loaded)} file(s).\n")
+        return loaded

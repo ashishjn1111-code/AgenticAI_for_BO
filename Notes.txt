@@ -1,0 +1,6 @@
+# Run with defaults
+./run_analyzer.sh
+# Run with no AI and fetch the last 25 errors
+./run_analyzer.sh --no-ai --max-errors 25
+# Run and limit logs to the last 3 days
+./run_analyzer.sh --days 3 --max-errors 50

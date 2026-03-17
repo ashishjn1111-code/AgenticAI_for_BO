@@ -1,22 +1,23 @@
 """
-log_parser.py — Log Parsing and Field Extraction
+log_parser.py — Log Line Parsing and Field Extraction
 
-Parses individual log lines to extract structured fields such as
-timestamp, severity, component, thread ID, and message content.
-Handles various SAP Business Objects log formats.
+Parses individual log lines into structured LogEntry records.
+Supports SAP Business Objects and Apache Tomcat log formats.
 """
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 from src.utils import parse_timestamp
 
 
+# ── Data Model ─────────────────────────────────────────────
+
+
 @dataclass
 class LogEntry:
-    """Represents a single parsed log entry."""
-
+    """A single parsed log line."""
     line_number: int
     raw_line: str
     timestamp: Optional[str] = None
@@ -28,203 +29,182 @@ class LogEntry:
     file_name: str = ""
 
     def __repr__(self):
-        return (
-            f"LogEntry(line={self.line_number}, severity={self.severity}, "
-            f"message='{self.message[:60]}...')"
-        )
+        msg = self.message[:60] + "..." if len(self.message) > 60 else self.message
+        return f"LogEntry(line={self.line_number}, severity={self.severity}, msg={msg!r})"
 
 
-# ─────────────────────────────────────────────────────────
-# Log Format Patterns
-# ─────────────────────────────────────────────────────────
+# ── Compiled Patterns (priority order) ─────────────────────
 
-# Pattern 1: Standard SAP BO format
-# Example: 2024-01-15 14:30:00.123|ERROR|CMS|[Thread-1]|Connection failed
-PATTERN_PIPE_DELIMITED = re.compile(
-    r"^(\d{4}-\d{2}-\d{2}[\sT]\d{2}:\d{2}:\d{2}[.\d]*)\s*\|\s*"
-    r"(\w+)\s*\|\s*"
-    r"([^|]*)\s*\|\s*"
-    r"\[?([^\]|]*)\]?\s*\|\s*"
-    r"(.*)$"
-)
+_PATTERNS = []
 
-# Pattern 2: Standard log4j-style format
-# Example: 2024-01-15 14:30:00 ERROR [CMS] [Thread-1] - Connection failed
-PATTERN_LOG4J = re.compile(
-    r"^(\d{4}[-/]\d{2}[-/]\d{2}[\sT]\d{2}:\d{2}:\d{2}[.\d]*)\s+"
-    r"(DEBUG|INFO|WARN(?:ING)?|ERROR|FATAL|SEVERE|CRITICAL)\s+"
-    r"\[?\s*([^\]\s]+)\s*\]?\s*"
-    r"(?:\[([^\]]*)\])?\s*[-:]?\s*"
-    r"(.*)$",
-    re.IGNORECASE,
-)
+def _p(name, regex, flags=0):
+    """Register a compiled pattern."""
+    _PATTERNS.append((name, re.compile(regex, flags)))
 
-# Pattern 3: Simple timestamp + severity
-# Example: 2024-01-15 14:30:00 ERROR Connection failed to database
-PATTERN_SIMPLE = re.compile(
-    r"^(\d{4}[-/]\d{2}[-/]\d{2}[\sT]\d{2}:\d{2}:\d{2}[.\d]*)\s+"
-    r"(DEBUG|INFO|WARN(?:ING)?|ERROR|FATAL|SEVERE|CRITICAL)\s+"
-    r"(.*)$",
-    re.IGNORECASE,
-)
+# SAP BO pipe-delimited:  2024-01-15 14:30:00.123|ERROR|CMS|[Thread-1]|msg
+_p("pipe_delimited",
+   r"^(\d{4}-\d{2}-\d{2}[\sT]\d{2}:\d{2}:\d{2}[.\d]*)\s*\|\s*"
+   r"(\w+)\s*\|\s*([^|]*)\s*\|\s*\[?([^\]|]*)\]?\s*\|\s*(.*)$")
 
-# Pattern 4: SAP BusinessObjects GLF format
-# Example: [2024-01-15T14:30:00.000] ERROR component_name: message
-PATTERN_GLF = re.compile(
-    r"^\[(\d{4}[-/]\d{2}[-/]\d{2}[\sT]\d{2}:\d{2}:\d{2}[.\d]*)\]\s+"
-    r"(DEBUG|INFO|WARN(?:ING)?|ERROR|FATAL|SEVERE|CRITICAL)\s+"
-    r"(\w[\w.]*)?:?\s*"
-    r"(.*)$",
-    re.IGNORECASE,
-)
+# log4j:  2024-01-15 14:30:00 ERROR [CMS] [Thread-1] - msg
+_p("log4j",
+   r"^(\d{4}[-/]\d{2}[-/]\d{2}[\sT]\d{2}:\d{2}:\d{2}[.\d]*)\s+"
+   r"(DEBUG|INFO|WARN(?:ING)?|ERROR|FATAL|SEVERE|CRITICAL)\s+"
+   r"\[?\s*([^\]\s]+)\s*\]?\s*(?:\[([^\]]*)\])?\s*[-:]?\s*(.*)$",
+   re.IGNORECASE)
 
-# Pattern 5: Windows Event-style or generic with severity keyword
-# Example: ERROR: Something went wrong
-PATTERN_SEVERITY_ONLY = re.compile(
-    r"^(DEBUG|INFO|WARN(?:ING)?|ERROR|FATAL|SEVERE|CRITICAL)\s*[:|-]\s*(.*)$",
-    re.IGNORECASE,
-)
+# GLF:  [2024-01-15T14:30:00.000] ERROR component: msg
+_p("glf",
+   r"^\[(\d{4}[-/]\d{2}[-/]\d{2}[\sT]\d{2}:\d{2}:\d{2}[.\d]*)\]\s+"
+   r"(DEBUG|INFO|WARN(?:ING)?|ERROR|FATAL|SEVERE|CRITICAL)\s+"
+   r"(\w[\w.]*)?\:?\s*(.*)$",
+   re.IGNORECASE)
 
-# All patterns in priority order
-LOG_PATTERNS = [
-    ("pipe_delimited", PATTERN_PIPE_DELIMITED),
-    ("log4j", PATTERN_LOG4J),
-    ("glf", PATTERN_GLF),
-    ("simple", PATTERN_SIMPLE),
-    ("severity_only", PATTERN_SEVERITY_ONLY),
-]
+# Tomcat catalina:  15-Jan-2024 14:30:00.123 SEVERE [main] org.apache...
+_p("tomcat_catalina",
+   r"^(\d{1,2}-\w{3}-\d{4}\s+\d{2}:\d{2}:\d{2}[.\d]*)\s+"
+   r"(INFO|WARNING|WARN|SEVERE|FINE|FINER|FINEST|CONFIG|FATAL|ERROR|DEBUG)\s+"
+   r"\[([^\]]*)\]\s+(.*)$",
+   re.IGNORECASE)
+
+# Tomcat JUL:  Jan 15, 2024 2:30:00 PM org.apache.catalina.core.StandardContext reload
+_p("tomcat_jul",
+   r"^(\w{3}\s+\d{1,2},\s+\d{4}\s+\d{1,2}:\d{2}:\d{2}\s+[AP]M)\s+"
+   r"([\w.$]+)\s+(\w+)\s*$",
+   re.IGNORECASE)
+
+# Tomcat access log:  192.168.1.1 - admin [15/Jan/2024:14:30:00 +0530] "GET /BOE HTTP/1.1" 500 1234
+_p("tomcat_access",
+   r'^([\d.]+)\s+\S+\s+(\S+)\s+'
+   r'\[(\d{2}/\w{3}/\d{4}:\d{2}:\d{2}:\d{2}[^\]]*)\]\s+'
+   r'"(\w+)\s+(\S+)\s+\S+"\s+(\d{3})\s+(\d+|-)')
+
+# Simple:  2024-01-15 14:30:00 ERROR msg
+_p("simple",
+   r"^(\d{4}[-/]\d{2}[-/]\d{2}[\sT]\d{2}:\d{2}:\d{2}[.\d]*)\s+"
+   r"(DEBUG|INFO|WARN(?:ING)?|ERROR|FATAL|SEVERE|CRITICAL)\s+(.*)$",
+   re.IGNORECASE)
+
+# Severity only:  ERROR: something went wrong
+_p("severity_only",
+   r"^(DEBUG|INFO|WARN(?:ING)?|ERROR|FATAL|SEVERE|CRITICAL)\s*[:|-]\s*(.*)$",
+   re.IGNORECASE)
+
+
+# Severity normalization map
+_SEV_MAP = {
+    "WARN": "WARNING", "FATAL": "CRITICAL", "SEVERE": "CRITICAL",
+    "FINE": "DEBUG", "FINER": "DEBUG", "FINEST": "DEBUG", "CONFIG": "INFO",
+}
+
+
+# ── Parser ─────────────────────────────────────────────────
 
 
 class LogParser:
-    """
-    Parses log file lines into structured LogEntry objects.
-
-    Usage:
-        parser = LogParser()
-        entries = parser.parse_file(log_file)
-    """
+    """Parses log file lines into LogEntry objects."""
 
     def __init__(self):
-        self.stats = {
-            "total_lines": 0,
-            "parsed_lines": 0,
-            "unparsed_lines": 0,
-            "format_counts": {},
-        }
+        self._stats = {"total_lines": 0, "parsed_lines": 0,
+                        "unparsed_lines": 0, "format_counts": {}}
 
-    def parse_line(self, line, line_number, file_name=""):
-        """
-        Parse a single log line into a LogEntry.
+    # ── Public API ─────────────────────────────────────────
 
-        Args:
-            line (str): Raw log line.
-            line_number (int): Line number in the file (1-indexed).
-            file_name (str): Name of the source file.
+    def parse_file(self, log_file):
+        """Parse all lines of a LogFile, return list of LogEntry."""
+        entries = []
+        for i, line in enumerate(log_file.lines, start=1):
+            entry = self._parse_line(line, i, log_file.name)
+            entries.append(entry)
+            self._stats["total_lines"] += 1
+        return entries
 
-        Returns:
-            LogEntry: Parsed log entry.
-        """
+    def parse_line(self, line, line_number=1, file_name=""):
+        """Parse a single line (public API for testing and direct use)."""
+        self._stats["total_lines"] += 1
+        return self._parse_line(line, line_number, file_name)
+
+    def get_stats(self):
+        return dict(self._stats)
+
+    def reset_stats(self):
+        self._stats = {"total_lines": 0, "parsed_lines": 0,
+                        "unparsed_lines": 0, "format_counts": {}}
+
+    # ── Internals ──────────────────────────────────────────
+
+    def _parse_line(self, line, line_number, file_name):
+        """Match a line against known patterns and populate a LogEntry."""
         line = line.rstrip("\n\r")
-        entry = LogEntry(
-            line_number=line_number,
-            raw_line=line,
-            file_name=file_name,
-        )
+        entry = LogEntry(line_number=line_number, raw_line=line, file_name=file_name)
 
         if not line.strip():
             return entry
 
-        for format_name, pattern in LOG_PATTERNS:
-            match = pattern.match(line)
-            if match:
-                self._populate_entry(entry, match, format_name)
-                self.stats["format_counts"][format_name] = (
-                    self.stats["format_counts"].get(format_name, 0) + 1
+        for fmt_name, pattern in _PATTERNS:
+            m = pattern.match(line)
+            if m:
+                self._populate(entry, m, fmt_name)
+                self._stats["format_counts"][fmt_name] = (
+                    self._stats["format_counts"].get(fmt_name, 0) + 1
                 )
-                self.stats["parsed_lines"] += 1
+                self._stats["parsed_lines"] += 1
                 return entry
 
-        # If no pattern matched, store the whole line as the message
+        # No pattern matched
         entry.message = line.strip()
-        self.stats["unparsed_lines"] += 1
-
+        self._stats["unparsed_lines"] += 1
         return entry
 
-    def _populate_entry(self, entry, match, format_name):
-        """Populate a LogEntry from a regex match based on the format."""
-        groups = match.groups()
+    def _populate(self, entry, m, fmt):
+        """Fill LogEntry fields from a regex match."""
+        g = m.groups()
 
-        if format_name == "pipe_delimited":
-            entry.timestamp = groups[0]
-            entry.severity = self._normalize_severity(groups[1])
-            entry.component = groups[2].strip()
-            entry.thread_id = groups[3].strip()
-            entry.message = groups[4].strip()
+        if fmt == "pipe_delimited":
+            entry.timestamp, sev, entry.component = g[0], g[1], g[2].strip()
+            entry.thread_id, entry.message = g[3].strip(), g[4].strip()
 
-        elif format_name == "log4j":
-            entry.timestamp = groups[0]
-            entry.severity = self._normalize_severity(groups[1])
-            entry.component = groups[2].strip() if groups[2] else ""
-            entry.thread_id = groups[3].strip() if groups[3] else ""
-            entry.message = groups[4].strip()
+        elif fmt == "log4j":
+            entry.timestamp, sev = g[0], g[1]
+            entry.component = (g[2] or "").strip()
+            entry.thread_id = (g[3] or "").strip()
+            entry.message = g[4].strip()
 
-        elif format_name == "glf":
-            entry.timestamp = groups[0]
-            entry.severity = self._normalize_severity(groups[1])
-            entry.component = groups[2].strip() if groups[2] else ""
-            entry.message = groups[3].strip()
+        elif fmt == "glf":
+            entry.timestamp, sev = g[0], g[1]
+            entry.component = (g[2] or "").strip()
+            entry.message = g[3].strip()
 
-        elif format_name == "simple":
-            entry.timestamp = groups[0]
-            entry.severity = self._normalize_severity(groups[1])
-            entry.message = groups[2].strip()
+        elif fmt == "tomcat_catalina":
+            entry.timestamp, sev = g[0], g[1]
+            entry.thread_id = g[2].strip()
+            entry.component = "tomcat"
+            entry.message = g[3].strip()
 
-        elif format_name == "severity_only":
-            entry.severity = self._normalize_severity(groups[0])
-            entry.message = groups[1].strip()
+        elif fmt == "tomcat_jul":
+            entry.timestamp = g[0]
+            entry.component = g[1].strip()
+            entry.message = g[2].strip()
+            sev = "INFO"
 
-        # Parse the timestamp string into a datetime
+        elif fmt == "tomcat_access":
+            entry.timestamp = g[2]
+            entry.component = "tomcat_access"
+            entry.thread_id = g[0]  # client IP
+            status = int(g[5])
+            entry.message = f"{g[3]} {g[4]} → {status}"
+            sev = "ERROR" if status >= 500 else ("WARNING" if status >= 400 else "INFO")
+
+        elif fmt == "simple":
+            entry.timestamp, sev, entry.message = g[0], g[1], g[2].strip()
+
+        elif fmt == "severity_only":
+            sev, entry.message = g[0], g[1].strip()
+
+        else:
+            sev = "UNKNOWN"
+
+        entry.severity = _SEV_MAP.get(sev.upper(), sev.upper())
+
         if entry.timestamp:
             entry.parsed_timestamp = parse_timestamp(entry.timestamp)
-
-    def _normalize_severity(self, severity_str):
-        """Normalize severity strings to standard levels."""
-        severity = severity_str.upper().strip()
-        mapping = {
-            "WARN": "WARNING",
-            "FATAL": "CRITICAL",
-            "SEVERE": "CRITICAL",
-        }
-        return mapping.get(severity, severity)
-
-    def parse_file(self, log_file):
-        """
-        Parse all lines of a LogFile into LogEntry objects.
-
-        Args:
-            log_file (LogFile): A LogFile object with lines loaded.
-
-        Returns:
-            list[LogEntry]: List of parsed log entries.
-        """
-        entries = []
-
-        for i, line in enumerate(log_file.lines, start=1):
-            entry = self.parse_line(line, line_number=i, file_name=log_file.name)
-            entries.append(entry)
-            self.stats["total_lines"] += 1
-
-        return entries
-
-    def get_stats(self):
-        """Return parsing statistics."""
-        return self.stats.copy()
-
-    def reset_stats(self):
-        """Reset parsing statistics."""
-        self.stats = {
-            "total_lines": 0,
-            "parsed_lines": 0,
-            "unparsed_lines": 0,
-            "format_counts": {},
-        }

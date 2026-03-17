@@ -1,164 +1,706 @@
-# =============================================================
-# Known Error Patterns for SAP Business Objects Logs
-# =============================================================
-# Each pattern includes:
-#   - name: Human-readable name
-#   - regex: Regular expression to match the error
-#   - severity: CRITICAL, ERROR, WARNING, INFO
-#   - category: Grouping category
-#   - description: Brief description of the issue
-
 patterns:
-
-  # ─────────────────────────────────────────────────────────
-  # Database / CMS Errors
-  # ─────────────────────────────────────────────────────────
-  - name: "CMS Database Connection Failure"
-    regex: "(?i)(database|db).*(connection|connect).*(fail|error|timeout|refuse)"
-    severity: "CRITICAL"
-    category: "Database"
-    description: "CMS cannot connect to the system database."
-
-  - name: "SQL Exception"
-    regex: "(?i)sql(exception|error|state)|ORA-\\d{5}|SQLSTATE"
-    severity: "ERROR"
-    category: "Database"
-    description: "A SQL error occurred during database interaction."
-
-  - name: "Connection Pool Exhausted"
-    regex: "(?i)(connection\\s*pool).*(exhaust|full|no\\s*available|limit)"
-    severity: "CRITICAL"
-    category: "Database"
-    description: "The database connection pool has been exhausted."
-
-  # ─────────────────────────────────────────────────────────
-  # Authentication / Authorization Errors
-  # ─────────────────────────────────────────────────────────
-  - name: "Authentication Failure"
-    regex: "(?i)(authenticat|login|logon).*(fail|denied|error|invalid|reject)"
-    severity: "ERROR"
-    category: "Authentication"
-    description: "User authentication attempt failed."
-
-  - name: "License Limit Reached"
-    regex: "(?i)(license|licence).*(exceed|limit|maximum|expired|invalid)"
-    severity: "CRITICAL"
-    category: "Licensing"
-    description: "SAP BO license has reached its limit or has expired."
-
-  - name: "Access Denied"
-    regex: "(?i)(access|permission|authoriz).*(denied|forbidden|insufficient|not\\s*allowed)"
-    severity: "WARNING"
-    category: "Authorization"
-    description: "A user was denied access to a resource."
-
-  # ─────────────────────────────────────────────────────────
-  # Server / Service Errors
-  # ─────────────────────────────────────────────────────────
-  - name: "Server Crash / Unexpected Shutdown"
-    regex: "(?i)(server|service|process).*(crash|unexpected.*(shutdown|terminat)|fatal|abort)"
-    severity: "CRITICAL"
-    category: "Server"
-    description: "A server or service crashed or terminated unexpectedly."
-
-  - name: "Out of Memory"
-    regex: "(?i)(out\\s*of\\s*memory|java\\.lang\\.OutOfMemoryError|heap\\s*space|memory.*exhaust)"
-    severity: "CRITICAL"
-    category: "Memory"
-    description: "A process ran out of available memory."
-
-  - name: "Service Unavailable"
-    regex: "(?i)(service|server).*(unavailable|not\\s*running|not\\s*respond|down|unreachable)"
-    severity: "ERROR"
-    category: "Server"
-    description: "A required service is unavailable or not responding."
-
-  - name: "Port Already In Use"
-    regex: "(?i)(port|address).*(already\\s*in\\s*use|bind.*fail)"
-    severity: "ERROR"
-    category: "Server"
-    description: "The server port is already occupied by another process."
-
-  # ─────────────────────────────────────────────────────────
-  # Report Processing Errors
-  # ─────────────────────────────────────────────────────────
-  - name: "Report Processing Failure"
-    regex: "(?i)(report|document).*(process|schedul|refresh).*(fail|error|exception)"
-    severity: "ERROR"
-    category: "Reporting"
-    description: "A report failed to process, schedule, or refresh."
-
-  - name: "Crystal Reports Error"
-    regex: "(?i)(crystal|cr).*(error|exception|fail)|CrystalEnterprise\\..*Exception"
-    severity: "ERROR"
-    category: "Reporting"
-    description: "Crystal Reports encountered an error."
-
-  - name: "Web Intelligence Error"
-    regex: "(?i)(webi|web\\s*intelligence).*(error|exception|fail)"
-    severity: "ERROR"
-    category: "Reporting"
-    description: "Web Intelligence processing encountered an error."
-
-  - name: "Data Source Connection Error"
-    regex: "(?i)(data\\s*source|universe|connection).*(error|fail|timeout|invalid)"
-    severity: "ERROR"
-    category: "Data Source"
-    description: "Failed to connect to a data source or universe."
-
-  # ─────────────────────────────────────────────────────────
-  # File System Errors
-  # ─────────────────────────────────────────────────────────
-  - name: "Disk Space Low"
-    regex: "(?i)(disk|storage|space).*(low|full|insufficient|no\\s*space)"
-    severity: "CRITICAL"
-    category: "File System"
-    description: "Disk space is running low on the server."
-
-  - name: "File Not Found"
-    regex: "(?i)(file|path|directory).*(not\\s*found|does\\s*not\\s*exist|missing)"
-    severity: "WARNING"
-    category: "File System"
-    description: "A required file or directory was not found."
-
-  - name: "File Permission Error"
-    regex: "(?i)(file|write|read).*(permission|access).*(denied|error)"
-    severity: "ERROR"
-    category: "File System"
-    description: "Insufficient permissions to access a file."
-
-  # ─────────────────────────────────────────────────────────
-  # Network Errors
-  # ─────────────────────────────────────────────────────────
-  - name: "Network Timeout"
-    regex: "(?i)(network|socket|connection).*(timeout|timed\\s*out)"
-    severity: "ERROR"
-    category: "Network"
-    description: "A network connection timed out."
-
-  - name: "SSL / TLS Error"
-    regex: "(?i)(ssl|tls|certificate).*(error|fail|invalid|expired|handshake)"
-    severity: "ERROR"
-    category: "Network"
-    description: "SSL/TLS certificate or handshake error."
-
-  # ─────────────────────────────────────────────────────────
-  # Generic Patterns (Catch-all)
-  # ─────────────────────────────────────────────────────────
-  - name: "Java Exception"
-    regex: "(?i)(Exception|Error)\\s+at\\s+[a-zA-Z]|java\\.[a-z]+\\.[A-Z].*Exception"
-    severity: "ERROR"
-    category: "Application"
-    description: "A Java exception stack trace was detected."
-
-  - name: "Generic Error"
-    regex: "(?i)\\b(ERROR|FATAL|SEVERE)\\b"
-    severity: "ERROR"
-    category: "General"
-    description: "A general error-level log entry was detected."
-
-  - name: "Generic Warning"
-    regex: "(?i)\\bWARN(ING)?\\b"
-    severity: "WARNING"
-    category: "General"
-    description: "A warning-level log entry was detected."
+- name: CMS Database Connection Failure
+  regex: (?i)(database|db).*(connection|connect).*(fail|error|timeout|refuse)
+  severity: CRITICAL
+  category: Database
+  description: CMS cannot connect to the system database.
+- name: SQL Exception
+  regex: (?i)sql(exception|error|state)|ORA-\d{5}|SQLSTATE
+  severity: ERROR
+  category: Database
+  description: A SQL error occurred during database interaction.
+- name: Connection Pool Exhausted
+  regex: (?i)(connection\s*pool).*(exhaust|full|no\s*available|limit)
+  severity: CRITICAL
+  category: Database
+  description: The database connection pool has been exhausted.
+- name: Database Deadlock
+  regex: (?i)(deadlock|lock\s*timeout|lock\s*wait|lock\s*contention)
+  severity: CRITICAL
+  category: Database
+  description: A database deadlock or lock timeout was detected.
+- name: Database Corruption
+  regex: (?i)(corrupt|inconsisten|integrity\s*check.*fail|checksum\s*error)
+  severity: CRITICAL
+  category: Database
+  description: Database corruption or data integrity issue detected.
+- name: CMS Repository Error
+  regex: (?i)(cms|repository).*(error|exception|fail|corrupt)
+  severity: ERROR
+  category: Database
+  description: CMS repository encountered an error.
+- name: Audit Database Error
+  regex: (?i)(audit).*(database|db).*(error|fail|insert|write)
+  severity: ERROR
+  category: Database
+  description: Failed to write audit data to the audit database.
+- name: Authentication Failure
+  regex: (?i)(authenticat|login|logon).*(fail|denied|error|invalid|reject)
+  severity: ERROR
+  category: Authentication
+  description: User authentication attempt failed.
+- name: LDAP/AD Connection Error
+  regex: (?i)(ldap|active\s*directory|ad\s*connect).*(fail|error|timeout|refuse|unavail)
+  severity: CRITICAL
+  category: Authentication
+  description: Cannot connect to LDAP/Active Directory for authentication.
+- name: Single Sign-On Failure
+  regex: (?i)(sso|single\s*sign|kerberos|saml|trusted\s*auth).*(fail|error|invalid|denied)
+  severity: ERROR
+  category: Authentication
+  description: Single Sign-On (SSO) authentication failed.
+- name: Password Expired
+  regex: (?i)(password).*(expir|must\s*change|reset\s*required)
+  severity: WARNING
+  category: Authentication
+  description: User password has expired or requires change.
+- name: Account Locked
+  regex: (?i)(account|user).*(lock|block|disabled|suspend)
+  severity: WARNING
+  category: Authentication
+  description: User account is locked, blocked, or disabled.
+- name: Access Denied
+  regex: (?i)(access|permission|authoriz).*(denied|forbidden|insufficient|not\s*allowed)
+  severity: WARNING
+  category: Authorization
+  description: A user was denied access to a resource.
+- name: License Limit Reached
+  regex: (?i)(license|licence).*(exceed|limit|maximum|expired|invalid)
+  severity: CRITICAL
+  category: Licensing
+  description: SAP BO license has reached its limit or has expired.
+- name: Concurrent Session Limit
+  regex: (?i)(concurrent|simultaneous).*(session|user|connection).*(limit|max|exceed)
+  severity: WARNING
+  category: Licensing
+  description: Maximum concurrent sessions/users limit reached.
+- name: Server Crash / Unexpected Shutdown
+  regex: (?i)(server|service|process).*(crash|unexpected.*(shutdown|terminat)|fatal|abort)
+  severity: CRITICAL
+  category: Server
+  description: A server or service crashed or terminated unexpectedly.
+- name: Out of Memory
+  regex: (?i)(out\s*of\s*memory|java\.lang\.OutOfMemoryError|heap\s*space|memory.*exhaust)
+  severity: CRITICAL
+  category: Memory
+  description: A process ran out of available memory.
+- name: High Memory Usage
+  regex: (?i)(memory\s*usage|heap\s*usage|memory\s*utiliz).*(high|exceed|above|threshold|warning)
+  severity: WARNING
+  category: Memory
+  description: Memory usage is approaching critical threshold.
+- name: Garbage Collection Pause
+  regex: (?i)(gc\s*pause|garbage\s*collect|full\s*gc|stop.the.world).*(long|excessive|slow|warn)
+  severity: WARNING
+  category: Memory
+  description: Long garbage collection pause affecting performance.
+- name: Service Unavailable
+  regex: (?i)(service|server).*(unavailable|not\s*running|not\s*respond|down|unreachable)
+  severity: ERROR
+  category: Server
+  description: A required service is unavailable or not responding.
+- name: Port Already In Use
+  regex: (?i)(port|address).*(already\s*in\s*use|bind.*fail)
+  severity: ERROR
+  category: Server
+  description: The server port is already occupied by another process.
+- name: Server Start Failure
+  regex: (?i)(server|sia|sap).*(start|init|bootstrap).*(fail|error|unable|abort)
+  severity: CRITICAL
+  category: Server
+  description: SAP BO server failed to start or initialize.
+- name: Cluster Communication Error
+  regex: (?i)(cluster|node|replica|failover).*(communicat|sync|heartbeat).*(fail|error|timeout)
+  severity: ERROR
+  category: Server
+  description: Cluster node communication or synchronization failure.
+- name: Server Registration Failure
+  regex: (?i)(register|registrat).*(server|service|cms).*(fail|error|timeout)
+  severity: ERROR
+  category: Server
+  description: Server failed to register with CMS.
+- name: Thread Deadlock
+  regex: (?i)(thread).*(deadlock|hung|blocked|stuck|not\s*respond)
+  severity: CRITICAL
+  category: Server
+  description: Thread deadlock or hung threads detected in server process.
+- name: Report Processing Failure
+  regex: (?i)(report|document).*(process|schedul|refresh).*(fail|error|exception)
+  severity: ERROR
+  category: Reporting
+  description: A report failed to process, schedule, or refresh.
+- name: Web Intelligence Error
+  regex: (?i)(webi|web\s*intelligence).*(error|exception|fail)
+  severity: ERROR
+  category: Reporting
+  description: Web Intelligence processing encountered an error.
+- name: Report Instance Limit
+  regex: (?i)(instance|schedule).*(limit|max|quota|exceed|too\s*many)
+  severity: WARNING
+  category: Reporting
+  description: Report instance or schedule limit reached.
+- name: Report Timeout
+  regex: (?i)(report|query|document).*(timeout|timed\s*out|too\s*long|exceed.*time)
+  severity: ERROR
+  category: Reporting
+  description: Report processing or query execution timed out.
+- name: FRS (File Repository) Error
+  regex: (?i)(frs|file\s*repository|input\s*frs|output\s*frs).*(error|fail|exception|corrupt)
+  severity: ERROR
+  category: Reporting
+  description: File Repository Server (FRS) encountered an error.
+- name: BEx Query Error
+  regex: (?i)(bex|bw\s*query|olap).*(error|fail|exception|timeout)
+  severity: ERROR
+  category: Reporting
+  description: BEx/OLAP query processing error.
+- name: Publication Failure
+  regex: (?i)(publicat|distribut|burst).*(fail|error|exception)
+  severity: ERROR
+  category: Reporting
+  description: Publication or report distribution failed.
+- name: Data Source Connection Error
+  regex: (?i)(data\s*source|universe|connection).*(error|fail|timeout|invalid)
+  severity: ERROR
+  category: Data Source
+  description: Failed to connect to a data source or universe.
+- name: Universe Design Error
+  regex: (?i)(universe|unx|semantic\s*layer).*(integrity|check|parse|compil).*(error|fail|warn)
+  severity: WARNING
+  category: Data Source
+  description: Universe integrity check or compilation warning.
+- name: Connection Server Error
+  regex: (?i)(connection\s*server|cs\d+).*(error|fail|exception|crash)
+  severity: ERROR
+  category: Data Source
+  description: Connection Server encountered an error.
+- name: Disk Space Low
+  regex: (?i)(disk|storage|space).*(low|full|insufficient|no\s*space)
+  severity: CRITICAL
+  category: File System
+  description: Disk space is running low on the server.
+- name: File Not Found
+  regex: (?i)(file|path|directory).*(not\s*found|does\s*not\s*exist|missing)
+  severity: WARNING
+  category: File System
+  description: A required file or directory was not found.
+- name: File Permission Error
+  regex: (?i)(file|write|read).*(permission|access).*(denied|error)
+  severity: ERROR
+  category: File System
+  description: Insufficient permissions to access a file.
+- name: Temp File Cleanup Error
+  regex: (?i)(temp|temporary|tmp).*(file|dir).*(clean|delet|remov|purg).*(fail|error)
+  severity: WARNING
+  category: File System
+  description: Failed to clean up temporary files.
+- name: Log File Rotation Error
+  regex: (?i)(log\s*file|log\s*rotat|archiv).*(fail|error|unable|full)
+  severity: WARNING
+  category: File System
+  description: Log file rotation or archival failed.
+- name: Network Timeout
+  regex: (?i)(network|socket|connection).*(timeout|timed\s*out)
+  severity: ERROR
+  category: Network
+  description: A network connection timed out.
+- name: SSL / TLS Error
+  regex: (?i)(ssl|tls|certificate).*(error|fail|invalid|expired|handshake)
+  severity: ERROR
+  category: Network
+  description: SSL/TLS certificate or handshake error.
+- name: DNS Resolution Failure
+  regex: (?i)(dns|host\s*name|name\s*resolution|unknown\s*host).*(fail|error|not\s*found)
+  severity: ERROR
+  category: Network
+  description: DNS hostname resolution failed.
+- name: Proxy Error
+  regex: (?i)(proxy|reverse\s*proxy|load\s*balancer).*(error|fail|timeout|502|503)
+  severity: ERROR
+  category: Network
+  description: Proxy or load balancer communication error.
+- name: Backup Failure
+  regex: (?i)(backup|snapshot).*(fail|error|abort|incomplete)
+  severity: ERROR
+  category: Administration
+  description: Scheduled backup failed or was incomplete.
+- name: Promotion Management Error
+  regex: (?i)(promot|lcm|lifecycle).*(fail|error|exception|conflict)
+  severity: ERROR
+  category: Administration
+  description: Promotion management or lifecycle operation failed.
+- name: Adaptive Processing Server Error
+  regex: (?i)(aps|adaptive\s*processing).*(error|fail|exception|crash|restart)
+  severity: ERROR
+  category: Server
+  description: Adaptive Processing Server (APS) encountered an error.
+- name: Event Server Error
+  regex: (?i)(event\s*server|event\s*process).*(error|fail|exception)
+  severity: ERROR
+  category: Server
+  description: Event Server encountered an error processing events.
+- name: RESTful Web Service Error
+  regex: (?i)(rest|wacs|raylight).*(fail|error|exception|timeout)
+  severity: ERROR
+  category: Server
+  description: RESTful Web Service (WACS) encountered an error.
+- name: WebI Export Document Error
+  regex: (?i)(webi|export|pdf|excel).*(fail|error|exception|unable)
+  severity: ERROR
+  category: Reporting
+  description: Failure exporting Web Intelligence document.
+- name: BI Launch Pad Timeout
+  regex: (?i)(launch\s*pad|bip).*(timeout|session\s*end|expire)
+  severity: WARNING
+  category: Authentication
+  description: BI Launch Pad user session timed out.
+- name: Cache Server Disk Full
+  regex: (?i)(cache\s*server).*(disk|space).*(full|error|low)
+  severity: CRITICAL
+  category: Server
+  description: Cache server partition is full.
+- name: Node Agent Down
+  regex: (?i)(node\s*agent|sia).*(unreachable|down|disconnect)
+  severity: CRITICAL
+  category: Server
+  description: Server node agent is down or not communicating.
+- name: Tomcat Integration Error
+  regex: (?i)(bobj|boe).*(tomcat|webapp).*(fail|error|unable)
+  severity: ERROR
+  category: Server
+  description: BOBJ web application container integration issue.
+- name: Repository Synchronization Error
+  regex: (?i)(repo|cms).*(sync).*(fail|error|mismatch)
+  severity: ERROR
+  category: Database
+  description: CMS repository synchronization failure.
+- name: Auditor Connection Error
+  regex: (?i)(auditor|ads).*(connect|db).*(fail|error)
+  severity: ERROR
+  category: Data Source
+  description: BO Auditor failed to connect to its data source.
+- name: Dashboard Design Error
+  regex: (?i)(dashboard|xcelsius|flash).*(fail|error|exception)
+  severity: ERROR
+  category: Reporting
+  description: Dashboard component loading or data retrieval failure.
+- name: Central Management Server Auto-Restart
+  regex: (?i)(cms|central\s*management).*(auto|restart|recover)
+  severity: WARNING
+  category: Server
+  description: CMS service automatically restarted after a crash.
+- name: Tomcat Startup Failure
+  regex: (?i)(catalina|tomcat).*(start|init).*(fail|error|exception|abort|unable)
+  severity: CRITICAL
+  category: Tomcat
+  description: Apache Tomcat failed to start or initialize.
+- name: Tomcat Shutdown Error
+  regex: (?i)(catalina|tomcat).*(shutdown|stop|destroy).*(error|fail|exception|force)
+  severity: WARNING
+  category: Tomcat
+  description: Error during Tomcat shutdown or service stop.
+- name: Tomcat Shutdown Hang
+  regex: (?i)(catalina|tomcat).*(shutdown|stop).*(hang|stuck|timeout|forc)
+  severity: ERROR
+  category: Tomcat
+  description: Tomcat is hanging during shutdown.
+- name: Catalina Not Configured
+  regex: (?i)(CATALINA_HOME|CATALINA_BASE|catalina\.properties).*(not\s*set|not\s*found|missing|invalid)
+  severity: CRITICAL
+  category: Tomcat
+  description: CATALINA_HOME or CATALINA_BASE environment not configured.
+- name: Tomcat Connector Error
+  regex: (?i)(connector|coyote|protocol\s*handler).*(fail|error|exception|refuse)
+  severity: CRITICAL
+  category: Tomcat
+  description: Tomcat HTTP/AJP connector encountered an error.
+- name: AJP Connector Failure
+  regex: (?i)(ajp|mod_jk).*(fail|error|refuse|reject|cannot\s*connect)
+  severity: CRITICAL
+  category: Tomcat
+  description: "AJP connector failure \u2014 cannot communicate with Apache httpd."
+- name: Tomcat Port Conflict
+  regex: (?i)(standard\s*server|catalina).*(port|address).*(already\s*in\s*use|bind)
+  severity: CRITICAL
+  category: Tomcat
+  description: Tomcat port is already in use by another process.
+- name: Tomcat SSL Configuration Error
+  regex: (?i)(ssl|https|keystore|truststore|certificate).*(tomcat|catalina|connector).*(error|fail|invalid)
+  severity: ERROR
+  category: Tomcat
+  description: SSL/HTTPS configuration error in Tomcat connector.
+- name: Tomcat Max Connections Reached
+  regex: (?i)(max\s*connections|acceptCount|connection\s*limit).*(reach|exceed|reject)
+  severity: WARNING
+  category: Tomcat
+  description: Tomcat reached maximum allowed connections.
+- name: Tomcat HTTP 500 Internal Server Error
+  regex: (?i)(HTTP/1\.[01]"\s+5\d{2}|status\s*=?\s*5\d{2}|Internal\s*Server\s*Error)
+  severity: ERROR
+  category: Tomcat
+  description: HTTP 5xx server error returned by Tomcat.
+- name: Tomcat HTTP 404 Not Found
+  regex: (?i)(HTTP/1\.[01]"\s+404|status\s*=?\s*404|Not\s*Found)
+  severity: WARNING
+  category: Tomcat
+  description: "HTTP 404 \u2014 requested resource not found."
+- name: Tomcat HTTP 403 Forbidden
+  regex: (?i)(HTTP/1\.[01]"\s+403|status\s*=?\s*403|Forbidden)
+  severity: WARNING
+  category: Tomcat
+  description: "HTTP 403 \u2014 access forbidden."
+- name: Tomcat HTTP 401 Unauthorized
+  regex: (?i)(HTTP/1\.[01]"\s+401|status\s*=?\s*401|Unauthorized)
+  severity: WARNING
+  category: Tomcat
+  description: "HTTP 401 \u2014 authentication required."
+- name: Tomcat HTTP 502 Bad Gateway
+  regex: (?i)(HTTP/1\.[01]"\s+502|status\s*=?\s*502|Bad\s*Gateway)
+  severity: ERROR
+  category: Tomcat
+  description: "HTTP 502 \u2014 bad gateway from upstream server."
+- name: Tomcat HTTP 503 Service Unavailable
+  regex: (?i)(HTTP/1\.[01]"\s+503|status\s*=?\s*503|Service\s*Unavailable)
+  severity: CRITICAL
+  category: Tomcat
+  description: "HTTP 503 \u2014 service unavailable."
+- name: Tomcat Deployment Failure
+  regex: (?i)(deploy|undeploy|redeploy|context).*(fail|error|exception|unable)
+  severity: ERROR
+  category: Tomcat
+  description: Web application deployment or context initialization failed.
+- name: WAR File Deployment Error
+  regex: (?i)(war|web\s*archive).*(deploy|extract|expand|copy).*(fail|error|corrupt)
+  severity: ERROR
+  category: Tomcat
+  description: WAR file deployment or extraction failed.
+- name: Context Startup Failure
+  regex: (?i)(StandardContext|context).*(start|init).*(fail|error|exception)
+  severity: ERROR
+  category: Tomcat
+  description: Web application context failed to start.
+- name: web.xml Parse Error
+  regex: (?i)(web\.xml|deployment\s*descriptor).*(parse|read|invalid|error|malform)
+  severity: ERROR
+  category: Tomcat
+  description: web.xml deployment descriptor parsing error.
+- name: Duplicate Context Path
+  regex: (?i)(context\s*path|context).*(duplic|already\s*exist|conflict)
+  severity: ERROR
+  category: Tomcat
+  description: Duplicate context path detected.
+- name: Tomcat Session Error
+  regex: (?i)(session).*(expir|invalid|timeout|persist|serial|error|fail)
+  severity: WARNING
+  category: Tomcat
+  description: Tomcat session management error.
+- name: Session Persistence Error
+  regex: (?i)(session).*(persist|store|save|load|backup).*(error|fail|exception)
+  severity: ERROR
+  category: Tomcat
+  description: Session persistence or serialization error.
+- name: Session ID Collision
+  regex: (?i)(session\s*id|jsessionid).*(duplic|collision|conflict|already\s*exist)
+  severity: WARNING
+  category: Tomcat
+  description: Session ID collision or duplication detected.
+- name: Session Fixation Attack
+  regex: (?i)(session\s*fixation|change\s*session\s*id|session\s*hijack)
+  severity: CRITICAL
+  category: Tomcat
+  description: Possible session fixation or hijacking attempt.
+- name: Tomcat Thread Pool Exhausted
+  regex: (?i)(thread\s*pool|executor|max\s*threads).*(exhaust|full|reject|limit|busy)
+  severity: CRITICAL
+  category: Tomcat
+  description: "Tomcat thread pool exhausted \u2014 all threads are busy."
+- name: Thread Leak Detected
+  regex: (?i)(thread).*(leak|orphan|abandon|not\s*stop)
+  severity: WARNING
+  category: Tomcat
+  description: Web application created threads that were not properly stopped.
+- name: Request Processing Timeout
+  regex: (?i)(request|processing).*(timeout|took\s*too\s*long|stuck\s*thread)
+  severity: ERROR
+  category: Tomcat
+  description: Request processing timed out or a stuck thread was detected.
+- name: Tomcat ClassNotFoundException
+  regex: (?i)(ClassNotFoundException|NoClassDefFoundError|ClassFormatError)
+  severity: ERROR
+  category: Tomcat
+  description: "Required Java class not found \u2014 missing JAR or classpath issue."
+- name: JAR Scanning Error
+  regex: (?i)(jar\s*scan|TldScanner|jar\s*file).*(error|fail|unable|skip)
+  severity: WARNING
+  category: Tomcat
+  description: Error scanning JAR files during startup.
+- name: Classpath Conflict
+  regex: (?i)(classpath|classload).*(conflict|duplic|multiple\s*version|incompatib)
+  severity: WARNING
+  category: Tomcat
+  description: Classpath conflict or duplicate library versions detected.
+- name: Memory Leak in ClassLoader
+  regex: (?i)(memory\s*leak|classloader\s*leak|webapp\s*classloader).*(detect|prevent|clear)
+  severity: WARNING
+  category: Tomcat
+  description: Potential ClassLoader memory leak detected in a web application.
+- name: Tomcat JNDI / DataSource Error
+  regex: (?i)(jndi|datasource|naming).*(fail|error|exception|not\s*found|cannot\s*create)
+  severity: ERROR
+  category: Tomcat
+  description: JNDI lookup or DataSource configuration error.
+- name: Connection Pool Leak
+  regex: (?i)(connection\s*pool|abandoned\s*connection|connection\s*leak|removeAbandoned)
+  severity: WARNING
+  category: Tomcat
+  description: "Database connection pool leak \u2014 connections not being returned."
+- name: DataSource Initialization Failure
+  regex: (?i)(datasource|dbcp|pool).*(init|creat).*(fail|error|exception)
+  severity: ERROR
+  category: Tomcat
+  description: DataSource or connection pool failed to initialize.
+- name: JSP Compilation Error
+  regex: (?i)(jsp|jasper).*(compil|translat).*(error|fail|exception)
+  severity: ERROR
+  category: Tomcat
+  description: JSP page compilation error.
+- name: Servlet Exception
+  regex: (?i)(servlet).*(exception|error|fail|init)
+  severity: ERROR
+  category: Tomcat
+  description: Servlet encountered an exception.
+- name: Servlet Initialization Error
+  regex: (?i)(servlet|StandardWrapper).*(init|load).*(fail|error|exception)
+  severity: ERROR
+  category: Tomcat
+  description: Servlet failed to initialize or load.
+- name: Tomcat Valve Error
+  regex: (?i)(valve|filter).*(error|exception|fail)
+  severity: ERROR
+  category: Tomcat
+  description: A Tomcat Valve or Servlet Filter encountered an error.
+- name: Tomcat Security Constraint Violation
+  regex: (?i)(security\s*constraint|realm|authenticat).*(violat|denied|fail|invalid|reject)
+  severity: WARNING
+  category: Tomcat
+  description: Tomcat security constraint or realm authentication issue.
+- name: Manager App Unauthorized Access
+  regex: (?i)(manager|host-manager|admin).*(unauthorized|denied|forbidden|invalid\s*credentials)
+  severity: WARNING
+  category: Tomcat
+  description: Unauthorized access attempt to Tomcat Manager application.
+- name: CSRF Token Validation Failed
+  regex: (?i)(csrf|cross.site|token).*(invalid|mismatch|fail|reject)
+  severity: WARNING
+  category: Tomcat
+  description: CSRF token validation failed.
+- name: WebSocket Error
+  regex: (?i)(websocket|ws://).*(error|fail|exception|close|reject)
+  severity: ERROR
+  category: Tomcat
+  description: WebSocket connection error.
+- name: Tomcat Web Application Error
+  regex: (?i)org\.apache\.(catalina|coyote|tomcat|jasper).*([Ee]rror|[Ee]xception|[Ff]ail)
+  severity: ERROR
+  category: Tomcat
+  description: Error in Tomcat core component.
+- name: Realm Configuration Error
+  regex: (?i)(realm|JDBCRealm|DataSourceRealm|JNDIRealm).*(error|fail|exception|misconfigur)
+  severity: ERROR
+  category: Tomcat
+  description: Tomcat Realm configuration or authentication store error.
+- name: Tomcat JMX Error
+  regex: (?i)(jmx|mbean|objectname).*(register|error|fail|exception)
+  severity: WARNING
+  category: Tomcat
+  description: JMX MBean registration or management error.
+- name: Tomcat NIO Channel Error
+  regex: (?i)(nio|channel|selector|socket\s*processor).*(error|exception|close|reset)
+  severity: WARNING
+  category: Tomcat
+  description: NIO channel or socket processing error.
+- name: Tomcat Access Log Error
+  regex: (?i)(access\s*log|AccessLogValve).*(error|fail|exception|write)
+  severity: WARNING
+  category: Tomcat
+  description: Error writing to Tomcat access log.
+- name: Tomcat Async Request Error
+  regex: (?i)(async|asynchronous).*(request|dispatch|listener).*(error|fail|timeout|exception)
+  severity: ERROR
+  category: Tomcat
+  description: Async request processing error.
+- name: Tomcat Request Header Too Large
+  regex: (?i)(request\s*header\s*is\s*too\s*large|packet\s*size)
+  severity: WARNING
+  category: Tomcat
+  description: Client request headers exceed configured limits.
+- name: Tomcat Client Abort Exception
+  regex: (?i)(ClientAbortException|broken\s*pipe|connection\s*reset\s*by\s*peer)
+  severity: WARNING
+  category: Tomcat
+  description: Client dropped connection before server finished writing.
+- name: Tomcat PermGen/Metaspace OutOfMemory
+  regex: (?i)(PermGen|Metaspace).*(Out\s*of\s*memory|size)
+  severity: CRITICAL
+  category: Tomcat
+  description: PermGen or Metaspace memory exhausted.
+- name: Tomcat File Upload Size Exceeded
+  regex: (?i)(SizeLimitExceededException|upload\s*limit|max\s*file\s*size)
+  severity: WARNING
+  category: Tomcat
+  description: File upload size exceeded configured limits.
+- name: Tomcat Keystore Password Incorrect
+  regex: (?i)(keystore|truststore).*(password|incorrect|tampered|fail)
+  severity: ERROR
+  category: Tomcat
+  description: Incorrect Keystore or Truststore password.
+- name: Tomcat Illegal Jsp Attribute
+  regex: (?i)(illegal|invalid).*(jsp\s*attribute|directive)
+  severity: ERROR
+  category: Tomcat
+  description: Syntax error in JSP tag or directive.
+- name: Tomcat CORS Policy Block
+  regex: (?i)(cors|cross.origin).*(block|fail|reject)
+  severity: WARNING
+  category: Tomcat
+  description: CORS policy blocked a cross-origin client request.
+- name: Tomcat Invalid URI Character
+  regex: (?i)(invalid\s*character|uri\s*not\s*absolute|illegal\s*uri)
+  severity: WARNING
+  category: Tomcat
+  description: Illegal or invalid character in request URI.
+- name: Tomcat Cluster Communication Error
+  regex: (?i)(tribes|cluster|multicast|membership).*(fail|error|time\s*out)
+  severity: ERROR
+  category: Tomcat
+  description: Tomcat cluster/session replication communication failure.
+- name: Tomcat Outdated Java Version
+  regex: (?i)(UnsupportedClassVersionError|minor\s*version)
+  severity: ERROR
+  category: Tomcat
+  description: Class compiled with newer Java version than Tomcat is running.
+- name: Tomcat Manager Authentication Lockout
+  regex: (?i)(LockOutRealm|lock\s*out|too\s*many\s*fail).*(manager|admin)
+  severity: WARNING
+  category: Tomcat
+  description: Too many failed Tomcat Manager logins; IP locked out.
+- name: Tomcat Chunked Coding Error
+  regex: (?i)(chunked|transfer-encoding).*(error|fail|invalid)
+  severity: ERROR
+  category: Tomcat
+  description: Invalid chunked transfer encoding from client.
+- name: Java Exception
+  regex: (?i)(Exception|Error)\s+at\s+[a-zA-Z]|java\.[a-z]+\.[A-Z].*Exception
+  severity: ERROR
+  category: Application
+  description: A Java exception stack trace was detected.
+- name: Generic Error
+  regex: (?i)\b(ERROR|FATAL|SEVERE)\b
+  severity: ERROR
+  category: General
+  description: A general error-level log entry was detected.
+- name: Generic Warning
+  regex: (?i)\bWARN(ING)?\b
+  severity: WARNING
+  category: General
+  description: A warning-level log entry was detected.
+- name: WebI Scheduling Timeout
+  regex: (?i)(schedule|publish).*(timeout|expired)
+  severity: WARNING
+  category: Reporting
+  description: WebI schedule timed out.
+- name: CMS Core Dump
+  regex: (?i)(cms).*(core\s*dump|segfault)
+  severity: CRITICAL
+  category: Server
+  description: CMS process crashed with a core dump.
+- name: File Repository Corrupt
+  regex: (?i)(frs|filestore).*(corrupt|invalid\s*checksum)
+  severity: CRITICAL
+  category: Reporting
+  description: File Repository Server found corrupt files.
+- name: SIA Bootstrap Error
+  regex: (?i)(sia|bootstrap).*(fail|abort)
+  severity: CRITICAL
+  category: Server
+  description: SIA bootstrap failed.
+- name: Semantic Layer Parsing Error
+  regex: (?i)(universe|unv|unx).*(parse|compile).*(error|fail)
+  severity: ERROR
+  category: Data Source
+  description: Universe semantic layer parse error.
+- name: Input FRS Disk Full
+  regex: (?i)(input\s*frs).*(disk\s*full|no\s*space)
+  severity: CRITICAL
+  category: Reporting
+  description: Input FRS disk is full.
+- name: Output FRS Disk Full
+  regex: (?i)(output\s*frs).*(disk\s*full|no\s*space)
+  severity: CRITICAL
+  category: Reporting
+  description: Output FRS disk is full.
+- name: Active Directory Sync Error
+  regex: (?i)(active\s*directory|ad).*(sync|graph).*(fail)
+  severity: ERROR
+  category: Authentication
+  description: AD Sync job failed.
+- name: Corba ORB Timeout
+  regex: (?i)(corba|orb).*(timeout|communication\s*fail)
+  severity: ERROR
+  category: Server
+  description: CORBA object request broker timeout.
+- name: Design Studio Error
+  regex: (?i)(design\s*studio|bip\s*designer).*(error|fail)
+  severity: ERROR
+  category: Reporting
+  description: Design Studio document rendering error.
+- name: Tomcat OutOfMemory Metaspace
+  regex: (?i)(java.lang.OutOfMemoryError|OOM).*(Metaspace)
+  severity: CRITICAL
+  category: Tomcat
+  description: Metaspace capacity exceeded.
+- name: Tomcat File Descriptor Limit
+  regex: (?i)(Too\s*many\s*open\s*files)
+  severity: CRITICAL
+  category: Tomcat
+  description: OS file descriptor limit reached.
+- name: Tomcat WebSocket Handshake Fail
+  regex: (?i)(websocket).*(handshake\s*fail)
+  severity: ERROR
+  category: Tomcat
+  description: WebSocket upgrade handshake failed.
+- name: Tomcat Slow HTTP POST Attack
+  regex: (?i)(SlowPOST|read\s*timeout).*(bytes|chunk)
+  severity: WARNING
+  category: Tomcat
+  description: Possible Slowloris / Slow POST attack detected.
+- name: Tomcat Coyote Max Headers Sent
+  regex: (?i)(coyote).*(maximum\s*number\s*of\s*headers)
+  severity: WARNING
+  category: Tomcat
+  description: Too many response headers generated.
+- name: Tomcat Catalina.out Tailing Error
+  regex: (?i)(catalina\.out).*(size|rotate|truncate)
+  severity: WARNING
+  category: Tomcat
+  description: Log size rotation limit reached or truncate failed.
+- name: Tomcat Async Dispatch Reject
+  regex: (?i)(async\s*dispatch).*(rejected)
+  severity: ERROR
+  category: Tomcat
+  description: Asynchronous dispatch queue rejected.
+- name: Tomcat Request Entity Too Large
+  regex: (?i)(status\s*=?\s*413|Entity\s*Too\s*Large)
+  severity: WARNING
+  category: Tomcat
+  description: HTTP 413 Payload Too Large.
+- name: Tomcat Jasper Compilation Timeout
+  regex: (?i)(jasper).*(compil).*(timeout|slow)
+  severity: WARNING
+  category: Tomcat
+  description: JSP background compilation taking too long.
+- name: Tomcat Unrecognized SNI
+  regex: (?i)(SNI|Server\s*Name\s*Indication).*(unrecognized|invalid)
+  severity: WARNING
+  category: Tomcat
+  description: Invalid SNI hostname provided in TLS handshake.
